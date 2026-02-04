@@ -1,0 +1,395 @@
+/*
+ * DLCut Styles
+ *
+ * Design principles:
+ * - Minimalist layout with generous whitespace
+ * - Neutral color palette (grays, subtle accents)
+ * - Clean typography using system fonts
+ * - No flashy effects or animations
+ * - Keyboard-friendly focus states
+ */
+
+/* Reset and Base */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* Colors - neutral palette */
+  --color-bg: #fafafa;
+  --color-surface: #ffffff;
+  --color-border: #e0e0e0;
+  --color-border-focus: #666666;
+  --color-text: #1a1a1a;
+  --color-text-secondary: #666666;
+  --color-text-muted: #999999;
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-error: #dc2626;
+  --color-error-bg: #fef2f2;
+  --color-success: #059669;
+  --color-success-bg: #ecfdf5;
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0f0f0f;
+    --color-surface: #1a1a1a;
+    --color-border: #333333;
+    --color-border-focus: #666666;
+    --color-text: #f0f0f0;
+    --color-text-secondary: #a0a0a0;
+    --color-text-muted: #666666;
+    --color-primary: #3b82f6;
+    --color-primary-hover: #60a5fa;
+    --color-error: #ef4444;
+    --color-error-bg: #1f1f1f;
+    --color-success: #10b981;
+    --color-success-bg: #1f1f1f;
+  }
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Container */
+.container {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: var(--space-xl);
+}
+
+/* Header */
+.header {
+  text-align: center;
+  margin-bottom: var(--space-xl);
+}
+
+.header h1 {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--space-xs);
+}
+
+.subtitle {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+/* Sections */
+.section {
+  margin-bottom: var(--space-lg);
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Labels */
+.label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text);
+  margin-bottom: var(--space-sm);
+}
+
+.sublabel {
+  display: block;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-xs);
+}
+
+/* Inputs */
+.input {
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--color-text);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.input:focus {
+  border-color: var(--color-border-focus);
+}
+
+.input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.input-small {
+  width: 100px;
+  text-align: center;
+  font-family: var(--font-mono);
+}
+
+/* Select */
+.select {
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--color-text);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+}
+
+.select:focus {
+  border-color: var(--color-border-focus);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: var(--space-sm) var(--space-lg);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  outline: none;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.btn:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-primary);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  color: white;
+  background-color: var(--color-primary);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--color-primary-hover);
+}
+
+.btn-secondary {
+  color: var(--color-text);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--color-bg);
+}
+
+/* Video Info */
+.video-header {
+  display: flex;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.thumbnail {
+  width: 160px;
+  height: 90px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-border);
+  flex-shrink: 0;
+}
+
+.video-details {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.video-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+  margin-bottom: var(--space-xs);
+  /* Truncate long titles */
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.video-uploader {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-xs);
+}
+
+.video-duration {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+}
+
+/* Cut Inputs */
+.cut-inputs {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-md);
+}
+
+.cut-field {
+  flex: 1;
+}
+
+.cut-separator {
+  color: var(--color-text-muted);
+  padding-bottom: var(--space-sm);
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-top: var(--space-sm);
+}
+
+/* Progress */
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--space-sm);
+}
+
+#progress-message {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+#progress-percent {
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-mono);
+}
+
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background-color: var(--color-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background-color: var(--color-primary);
+  transition: width 0.2s ease;
+}
+
+.progress-details {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--space-sm);
+  margin-bottom: var(--space-md);
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+}
+
+/* Status Messages */
+.status {
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+}
+
+.status.error {
+  color: var(--color-error);
+  background-color: var(--color-error-bg);
+  border: 1px solid var(--color-error);
+}
+
+.status.success {
+  color: var(--color-success);
+  background-color: var(--color-success-bg);
+  border: 1px solid var(--color-success);
+}
+
+.error {
+  color: var(--color-error);
+  font-size: 12px;
+  margin-top: var(--space-sm);
+}
+
+/* Loading state for inputs */
+.input.loading {
+  background-image: linear-gradient(90deg, transparent, rgba(0,0,0,0.05), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+  .container {
+    padding: var(--space-md);
+  }
+
+  .video-header {
+    flex-direction: column;
+  }
+
+  .thumbnail {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16/9;
+  }
+}

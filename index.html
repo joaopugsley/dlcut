@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DLCut</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main class="container">
+      <!-- Header -->
+      <header class="header">
+        <h1>DLCut</h1>
+        <p class="subtitle">YouTube Video Downloader & Cutter</p>
+      </header>
+
+      <!-- URL Input -->
+      <section class="section">
+        <label for="url-input" class="label">YouTube URL</label>
+        <input
+          type="text"
+          id="url-input"
+          class="input"
+          placeholder="https://www.youtube.com/watch?v=..."
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <p id="url-error" class="error hidden"></p>
+      </section>
+
+      <!-- Video Info (hidden until loaded) -->
+      <section id="video-info" class="section hidden">
+        <div class="video-header">
+          <img id="thumbnail" class="thumbnail" alt="Video thumbnail" />
+          <div class="video-details">
+            <h2 id="video-title" class="video-title"></h2>
+            <p id="video-uploader" class="video-uploader"></p>
+            <p id="video-duration" class="video-duration"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Format Selection (hidden until loaded) -->
+      <section id="format-section" class="section hidden">
+        <label for="format-select" class="label">Quality</label>
+        <select id="format-select" class="select">
+          <option value="">Select quality...</option>
+        </select>
+      </section>
+
+      <!-- Cut Selection (hidden until loaded) -->
+      <section id="cut-section" class="section hidden">
+        <label class="label">Cut Video (optional)</label>
+        <div class="cut-inputs">
+          <div class="cut-field">
+            <label for="start-time" class="sublabel">Start</label>
+            <input
+              type="text"
+              id="start-time"
+              class="input input-small"
+              placeholder="0:00"
+            />
+          </div>
+          <span class="cut-separator">to</span>
+          <div class="cut-field">
+            <label for="end-time" class="sublabel">End</label>
+            <input
+              type="text"
+              id="end-time"
+              class="input input-small"
+              placeholder="0:00"
+            />
+          </div>
+        </div>
+        <p id="cut-error" class="error hidden"></p>
+        <p class="hint">Leave empty to download the full video. Format: MM:SS or HH:MM:SS</p>
+      </section>
+
+      <!-- Download Button (hidden until loaded) -->
+      <section id="download-section" class="section hidden">
+        <button id="download-btn" class="btn btn-primary">
+          Choose Location & Download
+        </button>
+      </section>
+
+      <!-- Progress Section (hidden until downloading) -->
+      <section id="progress-section" class="section hidden">
+        <div class="progress-header">
+          <span id="progress-message">Preparing...</span>
+          <span id="progress-percent">0%</span>
+        </div>
+        <div class="progress-bar">
+          <div id="progress-fill" class="progress-fill"></div>
+        </div>
+        <div class="progress-details">
+          <span id="progress-speed"></span>
+          <span id="progress-eta"></span>
+        </div>
+        <button id="cancel-btn" class="btn btn-secondary">Cancel</button>
+      </section>
+
+      <!-- Status Messages -->
+      <section id="status-section" class="section hidden">
+        <div id="status-message" class="status"></div>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
