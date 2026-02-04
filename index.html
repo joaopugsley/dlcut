@@ -81,33 +81,24 @@
       <section id="cut-section" class="section hidden">
         <details class="collapsible">
           <summary class="collapsible-header">
-            <span class="collapsible-title">Cut video</span>
-            <span class="collapsible-hint">optional</span>
+            <span class="collapsible-title">Cut video (optional)</span>
           </summary>
           <div class="collapsible-content">
-            <div class="cut-inputs">
-              <div class="cut-field">
-                <label for="start-time" class="sublabel">Start</label>
-                <input
-                  type="text"
-                  id="start-time"
-                  class="input input-small"
-                  placeholder="0:00"
-                />
-              </div>
-              <span class="cut-separator">to</span>
-              <div class="cut-field">
-                <label for="end-time" class="sublabel">End</label>
-                <input
-                  type="text"
-                  id="end-time"
-                  class="input input-small"
-                  placeholder="0:00"
-                />
-              </div>
+            <!-- Range Slider -->
+            <div id="range-slider" class="range-slider">
+              <div class="range-slider-track"></div>
+              <div id="range-selection" class="range-slider-selection"></div>
+              <div id="handle-start" class="range-slider-handle" data-handle="start"></div>
+              <div id="handle-end" class="range-slider-handle" data-handle="end"></div>
             </div>
+            <div class="range-slider-labels">
+              <span id="label-start" class="range-slider-label active">0:00</span>
+              <span id="label-end" class="range-slider-label active">0:00</span>
+            </div>
+            <!-- Hidden inputs for form data -->
+            <input type="hidden" id="start-time" />
+            <input type="hidden" id="end-time" />
             <p id="cut-error" class="error hidden"></p>
-            <p class="hint">Leave empty to download the full video. Format: MM:SS or HH:MM:SS</p>
           </div>
         </details>
       </section>

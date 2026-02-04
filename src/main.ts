@@ -95,6 +95,12 @@ const cutSection = document.getElementById("cut-section") as HTMLElement;
 const startTimeInput = document.getElementById("start-time") as HTMLInputElement;
 const endTimeInput = document.getElementById("end-time") as HTMLInputElement;
 const cutError = document.getElementById("cut-error") as HTMLParagraphElement;
+const rangeSlider = document.getElementById("range-slider") as HTMLElement;
+const rangeSelection = document.getElementById("range-selection") as HTMLElement;
+const handleStart = document.getElementById("handle-start") as HTMLElement;
+const handleEnd = document.getElementById("handle-end") as HTMLElement;
+const labelStart = document.getElementById("label-start") as HTMLElement;
+const labelEnd = document.getElementById("label-end") as HTMLElement;
 const downloadSection = document.getElementById("download-section") as HTMLElement;
 const downloadBtn = document.getElementById("download-btn") as HTMLButtonElement;
 const progressSection = document.getElementById("progress-section") as HTMLElement;
@@ -113,6 +119,11 @@ let fetchTimeout: number | null = null;
 let isDownloading = false;
 let currentMode: DownloadMode = "video_with_audio";
 
+// Slider state
+let sliderStartPercent = 0;
+let sliderEndPercent = 100;
+let activeHandle: "start" | "end" | null = null;
+
 // Initialize
 async function init() {
   try {
@@ -129,8 +140,16 @@ async function init() {
   qualitySelect.addEventListener("change", handleQualityChange);
   downloadBtn.addEventListener("click", handleDownload);
   cancelBtn.addEventListener("click", handleCancel);
-  startTimeInput.addEventListener("blur", validateTimestamps);
-  endTimeInput.addEventListener("blur", validateTimestamps);
+
+  // Range slider events
+  handleStart.addEventListener("mousedown", (e) => startDrag(e, "start"));
+  handleEnd.addEventListener("mousedown", (e) => startDrag(e, "end"));
+  handleStart.addEventListener("touchstart", (e) => startDrag(e, "start"), { passive: false });
+  handleEnd.addEventListener("touchstart", (e) => startDrag(e, "end"), { passive: false });
+  document.addEventListener("mousemove", onDrag);
+  document.addEventListener("mouseup", stopDrag);
+  document.addEventListener("touchmove", onDrag, { passive: false });
+  document.addEventListener("touchend", stopDrag);
 
   // Listen for progress events from backend
   await listen<ProgressUpdate>("progress", (event) => {
@@ -227,8 +246,8 @@ function displayVideoInfo(info: VideoInfo) {
   videoUploader.textContent = info.uploader || "Unknown uploader";
   videoDuration.textContent = info.duration_string;
 
-  // Set placeholder for end time
-  endTimeInput.placeholder = info.duration_string;
+  // Initialize slider with video duration
+  resetSlider();
 
   // Populate quality options based on current mode
   populateQualityOptions();
@@ -253,18 +272,15 @@ function handleModeChange(mode: DownloadMode) {
     modeAudioBtn.classList.add("active");
   }
 
-  // Repopulate quality options
+  // Repopulate quality options (auto-selects highest and shows download button)
   populateQualityOptions();
-
-  // Hide download button until quality is selected
-  hide(downloadSection);
 }
 
-// Populate quality dropdown based on current mode
+// Populate quality dropdown based on current mode and auto-select highest
 function populateQualityOptions() {
   if (!currentVideoInfo) return;
 
-  qualitySelect.innerHTML = '<option value="">Select quality...</option>';
+  qualitySelect.innerHTML = "";
 
   if (currentMode === "video_with_audio") {
     for (const quality of currentVideoInfo.video_qualities) {
@@ -288,6 +304,12 @@ function populateQualityOptions() {
       qualitySelect.appendChild(option);
     }
   }
+
+  // Auto-select first (highest) quality option
+  if (qualitySelect.options.length > 0) {
+    qualitySelect.selectedIndex = 0;
+    show(downloadSection);
+  }
 }
 
 // Handle quality selection
@@ -297,6 +319,71 @@ function handleQualityChange() {
   } else {
     hide(downloadSection);
   }
+}
+
+// Slider functions
+function startDrag(e: MouseEvent | TouchEvent, handle: "start" | "end") {
+  e.preventDefault();
+  activeHandle = handle;
+}
+
+function onDrag(e: MouseEvent | TouchEvent) {
+  if (!activeHandle || !currentVideoInfo) return;
+  e.preventDefault();
+
+  const rect = rangeSlider.getBoundingClientRect();
+  const clientX = e instanceof MouseEvent ? e.clientX : e.touches[0].clientX;
+  let percent = ((clientX - rect.left) / rect.width) * 100;
+  percent = Math.max(0, Math.min(100, percent));
+
+  if (activeHandle === "start") {
+    sliderStartPercent = Math.min(percent, sliderEndPercent - 1);
+  } else {
+    sliderEndPercent = Math.max(percent, sliderStartPercent + 1);
+  }
+
+  updateSliderUI();
+}
+
+function stopDrag() {
+  activeHandle = null;
+}
+
+function updateSliderUI() {
+  if (!currentVideoInfo) return;
+
+  // Update handle positions
+  handleStart.style.left = `${sliderStartPercent}%`;
+  handleEnd.style.left = `${sliderEndPercent}%`;
+
+  // Update selection highlight
+  rangeSelection.style.left = `${sliderStartPercent}%`;
+  rangeSelection.style.width = `${sliderEndPercent - sliderStartPercent}%`;
+
+  // Calculate times
+  const duration = currentVideoInfo.duration;
+  const startTime = (sliderStartPercent / 100) * duration;
+  const endTime = (sliderEndPercent / 100) * duration;
+
+  // Update labels
+  labelStart.textContent = formatTime(startTime);
+  labelEnd.textContent = formatTime(endTime);
+
+  // Update hidden inputs
+  startTimeInput.value = sliderStartPercent > 0 ? startTime.toString() : "";
+  endTimeInput.value = sliderEndPercent < 100 ? endTime.toString() : "";
+}
+
+function formatTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+function resetSlider() {
+  sliderStartPercent = 0;
+  sliderEndPercent = 100;
+  updateSliderUI();
 }
 
 // Validate timestamps
@@ -367,25 +454,9 @@ async function handleDownload() {
     return;
   }
 
-  // Parse timestamps
-  let startTime: number | null = null;
-  let endTime: number | null = null;
-
-  const startStr = startTimeInput.value.trim();
-  const endStr = endTimeInput.value.trim();
-
-  if (startStr || endStr) {
-    const [start, end] = await invoke<[number | null, number | null]>(
-      "validate_timestamps",
-      {
-        start: startStr || null,
-        end: endStr || null,
-        duration: currentVideoInfo.duration,
-      }
-    );
-    startTime = start;
-    endTime = end;
-  }
+  // Get cut times from slider (stored as seconds in hidden inputs)
+  const startTime = startTimeInput.value ? parseFloat(startTimeInput.value) : null;
+  const endTime = endTimeInput.value ? parseFloat(endTimeInput.value) : null;
 
   // Start download
   isDownloading = true;
@@ -452,6 +523,8 @@ async function handleCancel() {
 function resetUI() {
   currentVideoInfo = null;
   currentMode = "video_with_audio";
+  sliderStartPercent = 0;
+  sliderEndPercent = 100;
   hide(videoInfoSkeleton);
   hide(videoInfoSection);
   hide(modeSection);

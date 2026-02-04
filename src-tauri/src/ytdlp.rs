@@ -15,6 +15,13 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+/// Windows flag to prevent console window from appearing
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 /// Raw format data from yt-dlp JSON output
 #[derive(Debug, Deserialize)]
 struct RawFormat {
@@ -44,11 +51,13 @@ struct RawVideoInfo {
 
 /// Check if yt-dlp is available
 pub async fn check_ytdlp() -> Result<()> {
-    let output = Command::new("yt-dlp")
-        .arg("--version")
-        .output()
-        .await
-        .map_err(|_| AppError::YtDlpNotFound)?;
+    let mut cmd = Command::new("yt-dlp");
+    cmd.arg("--version");
+
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    let output = cmd.output().await.map_err(|_| AppError::YtDlpNotFound)?;
 
     if output.status.success() {
         Ok(())
@@ -87,15 +96,20 @@ pub async fn fetch_video_info(url: &str) -> Result<VideoInfo> {
 
     // Use yt-dlp to get JSON metadata
     // Arguments are passed as separate strings to prevent shell injection
-    let output = Command::new("yt-dlp")
-        .args([
-            "--dump-json",           // Output JSON metadata
-            "--no-download",         // Don't download the video
-            "--no-warnings",         // Suppress warnings
-            "--no-playlist",         // Only process single video
-            "--flat-playlist",       // Don't extract playlist videos
-            url,
-        ])
+    let mut cmd = Command::new("yt-dlp");
+    cmd.args([
+        "--dump-json",       // Output JSON metadata
+        "--no-download",     // Don't download the video
+        "--no-warnings",     // Suppress warnings
+        "--no-playlist",     // Only process single video
+        "--flat-playlist",   // Don't extract playlist videos
+        url,
+    ]);
+
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    let output = cmd
         .output()
         .await
         .map_err(|e| AppError::FetchError(format!("Failed to run yt-dlp: {}", e)))?;
@@ -374,10 +388,15 @@ pub async fn download_video(
         })
         .await;
 
-    let mut child = Command::new("yt-dlp")
-        .args(&args)
+    let mut cmd = Command::new("yt-dlp");
+    cmd.args(&args)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    let mut child = cmd
         .spawn()
         .map_err(|e| AppError::DownloadError(format!("Failed to start yt-dlp: {}", e)))?;
 

@@ -12,13 +12,22 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+/// Windows flag to prevent console window from appearing
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 /// Check if ffmpeg is available
 pub async fn check_ffmpeg() -> Result<()> {
-    let output = Command::new("ffmpeg")
-        .arg("-version")
-        .output()
-        .await
-        .map_err(|_| AppError::FfmpegNotFound)?;
+    let mut cmd = Command::new("ffmpeg");
+    cmd.arg("-version");
+
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    let output = cmd.output().await.map_err(|_| AppError::FfmpegNotFound)?;
 
     if output.status.success() {
         Ok(())
@@ -60,19 +69,24 @@ pub async fn cut_video(
     // -t specifies duration from start point
     // -c copy uses stream copy (no re-encoding, very fast)
     // -avoid_negative_ts make_zero helps with timestamp issues
-    let mut child = Command::new("ffmpeg")
-        .args([
-            "-y",                           // Overwrite output
-            "-ss", &format!("{:.3}", start_time),  // Seek to start
-            "-i", input_path,               // Input file
-            "-t", &format!("{:.3}", duration),     // Duration
-            "-c", "copy",                   // Stream copy (no re-encode)
-            "-avoid_negative_ts", "make_zero",
-            "-progress", "pipe:1",          // Progress to stdout
-            output_path,
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+    let mut cmd = Command::new("ffmpeg");
+    cmd.args([
+        "-y",                                  // Overwrite output
+        "-ss", &format!("{:.3}", start_time),  // Seek to start
+        "-i", input_path,                      // Input file
+        "-t", &format!("{:.3}", duration),     // Duration
+        "-c", "copy",                          // Stream copy (no re-encode)
+        "-avoid_negative_ts", "make_zero",
+        "-progress", "pipe:1",                 // Progress to stdout
+        output_path,
+    ])
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
+
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    let mut child = cmd
         .spawn()
         .map_err(|e| AppError::CutError(format!("Failed to start ffmpeg: {}", e)))?;
 
@@ -150,22 +164,27 @@ async fn cut_video_reencode(
     let duration = end_time - start_time;
 
     // Re-encode with libx264 and aac
-    let mut child = Command::new("ffmpeg")
-        .args([
-            "-y",
-            "-ss", &format!("{:.3}", start_time),
-            "-i", input_path,
-            "-t", &format!("{:.3}", duration),
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "23",
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-progress", "pipe:1",
-            output_path,
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+    let mut cmd = Command::new("ffmpeg");
+    cmd.args([
+        "-y",
+        "-ss", &format!("{:.3}", start_time),
+        "-i", input_path,
+        "-t", &format!("{:.3}", duration),
+        "-c:v", "libx264",
+        "-preset", "fast",
+        "-crf", "23",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-progress", "pipe:1",
+        output_path,
+    ])
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
+
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    let mut child = cmd
         .spawn()
         .map_err(|e| AppError::CutError(format!("Failed to start ffmpeg: {}", e)))?;
 
