@@ -647,6 +647,36 @@ body {
   font-weight: 500;
 }
 
+/* Footer */
+.app-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: var(--space-xs);
+}
+
+.version {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.credits {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.credits-link {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.credits-link:hover {
+  color: var(--color-text-secondary);
+  text-decoration: underline;
+}
+
 /* Responsive adjustments */
 @media (max-width: 480px) {
   .container {

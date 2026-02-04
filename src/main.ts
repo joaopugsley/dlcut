@@ -192,6 +192,11 @@ async function init() {
   // Set up window controls (minimize, close)
   await setupWindowControls();
 
+  // Display app version
+  const { getVersion } = await import("@tauri-apps/api/app");
+  const version = await getVersion();
+  document.getElementById("app-version")!.textContent = `v${version}`;
+
   try {
     await invoke("check_dependencies");
   } catch (error) {
@@ -222,6 +227,19 @@ async function init() {
   if (cutCollapsible) {
     cutCollapsible.addEventListener("toggle", () => resizeWindowToContent());
   }
+
+  // Credits links - open in browser
+  const { open } = await import("@tauri-apps/plugin-shell");
+
+  document.getElementById("credits-twitter")!.addEventListener("click", async (e) => {
+    e.preventDefault();
+    await open("https://twitter.com/i/user/996532148436918272");
+  });
+
+  document.getElementById("credits-github")!.addEventListener("click", async (e) => {
+    e.preventDefault();
+    await open("https://github.com/joaopugsley");
+  });
 
   // Listen for progress events from backend
   await listen<ProgressUpdate>("progress", (event) => {
