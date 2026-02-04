@@ -80,6 +80,7 @@ interface ProgressUpdate {
 // DOM Elements
 const urlInput = document.getElementById("url-input") as HTMLInputElement;
 const urlError = document.getElementById("url-error") as HTMLParagraphElement;
+const videoInfoSkeleton = document.getElementById("video-info-skeleton") as HTMLElement;
 const videoInfoSection = document.getElementById("video-info") as HTMLElement;
 const thumbnail = document.getElementById("thumbnail") as HTMLImageElement;
 const videoTitle = document.getElementById("video-title") as HTMLHeadingElement;
@@ -196,11 +197,14 @@ function isYouTubeUrl(url: string): boolean {
 async function fetchVideoInfo(url: string) {
   resetUI();
   urlInput.classList.add("loading");
+  show(videoInfoSkeleton);
 
   try {
     currentVideoInfo = await invoke<VideoInfo>("fetch_video_info", { url });
+    hide(videoInfoSkeleton);
     displayVideoInfo(currentVideoInfo);
   } catch (error) {
+    hide(videoInfoSkeleton);
     showError(urlError, `${error}`);
   } finally {
     urlInput.classList.remove("loading");
@@ -448,6 +452,7 @@ async function handleCancel() {
 function resetUI() {
   currentVideoInfo = null;
   currentMode = "video_with_audio";
+  hide(videoInfoSkeleton);
   hide(videoInfoSection);
   hide(modeSection);
   hide(qualitySection);
