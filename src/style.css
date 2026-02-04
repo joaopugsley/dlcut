@@ -161,7 +161,7 @@ body {
 
 /* Sections */
 .section {
-  margin-bottom: var(--space-lg);
+  margin-bottom: var(--space-md);
 }
 
 .hidden {

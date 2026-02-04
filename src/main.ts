@@ -326,9 +326,9 @@ function displayVideoInfo(info: VideoInfo) {
 
   // Show sections
   show(videoInfoSection);
+  show(cutSection);
   show(modeSection);
   show(qualitySection);
-  show(cutSection);
 }
 
 // Handle mode change (video+audio or audio only)

@@ -65,31 +65,6 @@
         </div>
       </section>
 
-      <!-- Download Mode Selection (hidden until loaded) -->
-      <section id="mode-section" class="section hidden">
-        <label class="label">Download Type</label>
-        <div class="mode-buttons">
-          <button id="mode-video" class="mode-btn active" data-mode="video_with_audio">
-            <span class="mode-icon">🎬</span>
-            <span class="mode-label">Video + Audio</span>
-            <span class="mode-ext">.mp4</span>
-          </button>
-          <button id="mode-audio" class="mode-btn" data-mode="audio_only">
-            <span class="mode-icon">🎵</span>
-            <span class="mode-label">Audio Only</span>
-            <span class="mode-ext">.mp3</span>
-          </button>
-        </div>
-      </section>
-
-      <!-- Quality Selection (hidden until loaded) -->
-      <section id="quality-section" class="section hidden">
-        <label for="quality-select" class="label">Quality</label>
-        <select id="quality-select" class="select">
-          <option value="">Select quality...</option>
-        </select>
-      </section>
-
       <!-- Cut Selection (hidden until loaded) -->
       <section id="cut-section" class="section hidden">
         <details class="collapsible">
@@ -114,6 +89,31 @@
             <p id="cut-error" class="error hidden"></p>
           </div>
         </details>
+      </section>
+
+      <!-- Download Mode Selection (hidden until loaded) -->
+      <section id="mode-section" class="section hidden">
+        <label class="label">Download Type</label>
+        <div class="mode-buttons">
+          <button id="mode-video" class="mode-btn active" data-mode="video_with_audio">
+            <span class="mode-icon">🎬</span>
+            <span class="mode-label">Video + Audio</span>
+            <span class="mode-ext">.mp4</span>
+          </button>
+          <button id="mode-audio" class="mode-btn" data-mode="audio_only">
+            <span class="mode-icon">🎵</span>
+            <span class="mode-label">Audio Only</span>
+            <span class="mode-ext">.mp3</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Quality Selection (hidden until loaded) -->
+      <section id="quality-section" class="section hidden">
+        <label for="quality-select" class="label">Quality</label>
+        <select id="quality-select" class="select">
+          <option value="">Select quality...</option>
+        </select>
       </section>
 
       <!-- Download Button (hidden until loaded) -->
