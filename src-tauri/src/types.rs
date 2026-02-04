@@ -5,6 +5,38 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Download mode - video with audio or audio only
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadMode {
+    /// Download video with audio merged (output as .mp4)
+    VideoWithAudio,
+    /// Download audio only (output as .mp3)
+    AudioOnly,
+}
+
+/// Quality option for video downloads
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VideoQuality {
+    /// Height in pixels (e.g., 1080, 720, 480)
+    pub height: u32,
+    /// Human-readable label (e.g., "1080p")
+    pub label: String,
+    /// Estimated file size (if available)
+    pub filesize_approx: Option<String>,
+}
+
+/// Quality option for audio downloads
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AudioQuality {
+    /// Bitrate identifier (e.g., "high", "medium", "low")
+    pub quality_id: String,
+    /// Human-readable label (e.g., "High Quality (320kbps)")
+    pub label: String,
+    /// Audio bitrate in kbps (approximate)
+    pub bitrate: u32,
+}
+
 /// Video format information from yt-dlp
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoFormat {
@@ -37,14 +69,23 @@ pub struct VideoInfo {
     pub duration_string: String,
     pub thumbnail: Option<String>,
     pub uploader: Option<String>,
+    /// Legacy formats (kept for compatibility)
     pub formats: Vec<VideoFormat>,
+    /// Available video quality options
+    pub video_qualities: Vec<VideoQuality>,
+    /// Available audio quality options
+    pub audio_qualities: Vec<AudioQuality>,
 }
 
 /// Download request from frontend
 #[derive(Debug, Clone, Deserialize)]
 pub struct DownloadRequest {
     pub url: String,
-    pub format_id: String,
+    /// For VideoWithAudio: height as string (e.g., "1080")
+    /// For AudioOnly: quality_id (e.g., "high", "medium", "low")
+    pub quality: String,
+    /// Download mode (video+audio or audio only)
+    pub mode: DownloadMode,
     pub output_path: String,
     /// Start time in seconds (optional, for cutting)
     pub start_time: Option<f64>,

@@ -140,7 +140,8 @@ pub async fn start_download(
 
     // Clone values for the spawned task
     let url = request.url.clone();
-    let format_id = request.format_id.clone();
+    let mode = request.mode.clone();
+    let quality = request.quality.clone();
     let output_path = request.output_path.clone();
     let start_time = request.start_time;
     let end_time = request.end_time;
@@ -159,7 +160,8 @@ pub async fn start_download(
     let handle = tokio::spawn(async move {
         let result = ytdlp::download_video(
             &url,
-            &format_id,
+            &mode,
+            &quality,
             &output_path,
             start_time,
             end_time,

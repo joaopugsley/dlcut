@@ -43,6 +43,20 @@ interface VideoFormat {
   has_audio: boolean;
 }
 
+interface VideoQuality {
+  height: number;
+  label: string;
+  filesize_approx: string | null;
+}
+
+interface AudioQuality {
+  quality_id: string;
+  label: string;
+  bitrate: number;
+}
+
+type DownloadMode = "video_with_audio" | "audio_only";
+
 interface VideoInfo {
   id: string;
   title: string;
@@ -51,6 +65,8 @@ interface VideoInfo {
   thumbnail: string | null;
   uploader: string | null;
   formats: VideoFormat[];
+  video_qualities: VideoQuality[];
+  audio_qualities: AudioQuality[];
 }
 
 interface ProgressUpdate {
@@ -69,8 +85,11 @@ const thumbnail = document.getElementById("thumbnail") as HTMLImageElement;
 const videoTitle = document.getElementById("video-title") as HTMLHeadingElement;
 const videoUploader = document.getElementById("video-uploader") as HTMLParagraphElement;
 const videoDuration = document.getElementById("video-duration") as HTMLParagraphElement;
-const formatSection = document.getElementById("format-section") as HTMLElement;
-const formatSelect = document.getElementById("format-select") as HTMLSelectElement;
+const modeSection = document.getElementById("mode-section") as HTMLElement;
+const modeVideoBtn = document.getElementById("mode-video") as HTMLButtonElement;
+const modeAudioBtn = document.getElementById("mode-audio") as HTMLButtonElement;
+const qualitySection = document.getElementById("quality-section") as HTMLElement;
+const qualitySelect = document.getElementById("quality-select") as HTMLSelectElement;
 const cutSection = document.getElementById("cut-section") as HTMLElement;
 const startTimeInput = document.getElementById("start-time") as HTMLInputElement;
 const endTimeInput = document.getElementById("end-time") as HTMLInputElement;
@@ -91,6 +110,7 @@ const statusMessage = document.getElementById("status-message") as HTMLDivElemen
 let currentVideoInfo: VideoInfo | null = null;
 let fetchTimeout: number | null = null;
 let isDownloading = false;
+let currentMode: DownloadMode = "video_with_audio";
 
 // Initialize
 async function init() {
@@ -103,7 +123,9 @@ async function init() {
   // Set up event listeners
   urlInput.addEventListener("input", handleUrlInput);
   urlInput.addEventListener("paste", handleUrlPaste);
-  formatSelect.addEventListener("change", handleFormatChange);
+  modeVideoBtn.addEventListener("click", () => handleModeChange("video_with_audio"));
+  modeAudioBtn.addEventListener("click", () => handleModeChange("audio_only"));
+  qualitySelect.addEventListener("change", handleQualityChange);
   downloadBtn.addEventListener("click", handleDownload);
   cancelBtn.addEventListener("click", handleCancel);
   startTimeInput.addEventListener("blur", validateTimestamps);
@@ -201,43 +223,72 @@ function displayVideoInfo(info: VideoInfo) {
   videoUploader.textContent = info.uploader || "Unknown uploader";
   videoDuration.textContent = info.duration_string;
 
-  // Populate format select
-  formatSelect.innerHTML = '<option value="">Select quality...</option>';
-  for (const format of info.formats) {
-    const option = document.createElement("option");
-    option.value = format.format_id;
-
-    // Build label: "1080p • h264 • ~150 MB"
-    const parts = [format.quality];
-    if (format.vcodec && format.vcodec !== "none") {
-      // Simplify codec name
-      const codec = format.vcodec.split(".")[0];
-      parts.push(codec);
-    }
-    if (format.filesize_approx) {
-      parts.push(`~${format.filesize_approx}`);
-    }
-    if (!format.has_audio) {
-      parts.push("(no audio)");
-    }
-
-    option.textContent = parts.join(" • ");
-    option.dataset.ext = format.ext;
-    formatSelect.appendChild(option);
-  }
-
   // Set placeholder for end time
   endTimeInput.placeholder = info.duration_string;
 
+  // Populate quality options based on current mode
+  populateQualityOptions();
+
   // Show sections
   show(videoInfoSection);
-  show(formatSection);
+  show(modeSection);
+  show(qualitySection);
   show(cutSection);
 }
 
-// Handle format selection
-function handleFormatChange() {
-  if (formatSelect.value) {
+// Handle mode change (video+audio or audio only)
+function handleModeChange(mode: DownloadMode) {
+  currentMode = mode;
+
+  // Update button states
+  if (mode === "video_with_audio") {
+    modeVideoBtn.classList.add("active");
+    modeAudioBtn.classList.remove("active");
+  } else {
+    modeVideoBtn.classList.remove("active");
+    modeAudioBtn.classList.add("active");
+  }
+
+  // Repopulate quality options
+  populateQualityOptions();
+
+  // Hide download button until quality is selected
+  hide(downloadSection);
+}
+
+// Populate quality dropdown based on current mode
+function populateQualityOptions() {
+  if (!currentVideoInfo) return;
+
+  qualitySelect.innerHTML = '<option value="">Select quality...</option>';
+
+  if (currentMode === "video_with_audio") {
+    for (const quality of currentVideoInfo.video_qualities) {
+      const option = document.createElement("option");
+      option.value = quality.height.toString();
+
+      // Build label: "1080p • ~150 MB"
+      const parts = [quality.label];
+      if (quality.filesize_approx) {
+        parts.push(`~${quality.filesize_approx}`);
+      }
+
+      option.textContent = parts.join(" • ");
+      qualitySelect.appendChild(option);
+    }
+  } else {
+    for (const quality of currentVideoInfo.audio_qualities) {
+      const option = document.createElement("option");
+      option.value = quality.quality_id;
+      option.textContent = quality.label;
+      qualitySelect.appendChild(option);
+    }
+  }
+}
+
+// Handle quality selection
+function handleQualityChange() {
+  if (qualitySelect.value) {
     show(downloadSection);
   } else {
     hide(downloadSection);
@@ -276,15 +327,15 @@ async function handleDownload() {
   const valid = await validateTimestamps();
   if (!valid) return;
 
-  // Get selected format
-  const selectedOption = formatSelect.selectedOptions[0];
-  if (!selectedOption || !formatSelect.value) {
+  // Get selected quality
+  if (!qualitySelect.value) {
     showStatus("Please select a quality", "error");
     return;
   }
 
-  const formatId = formatSelect.value;
-  const ext = selectedOption.dataset.ext || "mp4";
+  const quality = qualitySelect.value;
+  const ext = currentMode === "video_with_audio" ? "mp4" : "mp3";
+  const fileTypeName = currentMode === "video_with_audio" ? "Video" : "Audio";
 
   // Generate filename
   const filename = await invoke<string>("generate_filename", {
@@ -296,16 +347,15 @@ async function handleDownload() {
   const defaultDir = await invoke<string | null>("get_default_download_dir");
 
   // Open save dialog using Tauri's dialog plugin
-  // We need to use the global Tauri API for the dialog plugin
   const { save } = await import("@tauri-apps/plugin-dialog");
 
   const outputPath = await save({
     defaultPath: defaultDir ? `${defaultDir}/${filename}` : filename,
     filters: [
-      { name: "Video", extensions: [ext] },
+      { name: fileTypeName, extensions: [ext] },
       { name: "All Files", extensions: ["*"] },
     ],
-    title: "Save Video As",
+    title: `Save ${fileTypeName} As`,
   });
 
   if (!outputPath) {
@@ -343,7 +393,8 @@ async function handleDownload() {
     await invoke("start_download", {
       request: {
         url: urlInput.value.trim(),
-        format_id: formatId,
+        quality: quality,
+        mode: currentMode,
         output_path: outputPath,
         start_time: startTime,
         end_time: endTime,
@@ -396,15 +447,19 @@ async function handleCancel() {
 // Reset UI to initial state
 function resetUI() {
   currentVideoInfo = null;
+  currentMode = "video_with_audio";
   hide(videoInfoSection);
-  hide(formatSection);
+  hide(modeSection);
+  hide(qualitySection);
   hide(cutSection);
   hide(downloadSection);
   hide(progressSection);
   hide(statusSection);
   hideError(urlError);
   hideError(cutError);
-  formatSelect.innerHTML = '<option value="">Select quality...</option>';
+  qualitySelect.innerHTML = '<option value="">Select quality...</option>';
+  modeVideoBtn.classList.add("active");
+  modeAudioBtn.classList.remove("active");
   startTimeInput.value = "";
   endTimeInput.value = "";
   progressFill.style.width = "0%";

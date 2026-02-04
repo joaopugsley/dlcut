@@ -4,7 +4,10 @@
 //! Commands are built using proper argument arrays to prevent injection.
 
 use crate::error::{AppError, Result};
-use crate::types::{format_bytes, format_duration, ProgressStage, ProgressUpdate, VideoFormat, VideoInfo};
+use crate::types::{
+    format_bytes, format_duration, AudioQuality, DownloadMode, ProgressStage, ProgressUpdate,
+    VideoFormat, VideoInfo, VideoQuality,
+};
 use regex::Regex;
 use serde::Deserialize;
 use std::process::Stdio;
@@ -109,16 +112,38 @@ pub async fn fetch_video_info(url: &str) -> Result<VideoInfo> {
     let raw: RawVideoInfo = serde_json::from_str(&stdout)
         .map_err(|e| AppError::FetchError(format!("Failed to parse video info: {}", e)))?;
 
-    // Convert raw formats to our format type
-    let formats = raw
-        .formats
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|f| convert_format(f))
+    let raw_formats = raw.formats.unwrap_or_default();
+
+    // Convert raw formats to our format type (legacy)
+    let formats = raw_formats
+        .iter()
+        .filter_map(convert_format)
         .collect::<Vec<_>>();
 
     // Filter to only useful formats (video with audio, or best quality options)
     let formats = filter_formats(formats);
+
+    // Extract video qualities (unique heights from video formats)
+    let video_qualities = extract_video_qualities(&raw_formats);
+
+    // Audio qualities are fixed options since yt-dlp will select best available
+    let audio_qualities = vec![
+        AudioQuality {
+            quality_id: "high".to_string(),
+            label: "High Quality (320kbps)".to_string(),
+            bitrate: 320,
+        },
+        AudioQuality {
+            quality_id: "medium".to_string(),
+            label: "Medium Quality (192kbps)".to_string(),
+            bitrate: 192,
+        },
+        AudioQuality {
+            quality_id: "low".to_string(),
+            label: "Low Quality (128kbps)".to_string(),
+            bitrate: 128,
+        },
+    ];
 
     let duration = raw.duration.unwrap_or(0.0);
 
@@ -130,11 +155,13 @@ pub async fn fetch_video_info(url: &str) -> Result<VideoInfo> {
         thumbnail: raw.thumbnail,
         uploader: raw.uploader,
         formats,
+        video_qualities,
+        audio_qualities,
     })
 }
 
 /// Convert raw format to our format type
-fn convert_format(raw: RawFormat) -> Option<VideoFormat> {
+fn convert_format(raw: &RawFormat) -> Option<VideoFormat> {
     let has_video = raw.vcodec.as_ref().map(|v| v != "none").unwrap_or(false);
     let has_audio = raw.acodec.as_ref().map(|a| a != "none").unwrap_or(false);
 
@@ -161,18 +188,57 @@ fn convert_format(raw: RawFormat) -> Option<VideoFormat> {
     let filesize_approx = filesize.map(format_bytes);
 
     Some(VideoFormat {
-        format_id: raw.format_id,
-        ext: raw.ext,
+        format_id: raw.format_id.clone(),
+        ext: raw.ext.clone(),
         resolution,
         fps: raw.fps,
-        vcodec: raw.vcodec,
-        acodec: raw.acodec,
+        vcodec: raw.vcodec.clone(),
+        acodec: raw.acodec.clone(),
         filesize,
         filesize_approx,
         quality,
         has_video,
         has_audio,
     })
+}
+
+/// Extract unique video quality options from raw formats
+fn extract_video_qualities(raw_formats: &[RawFormat]) -> Vec<VideoQuality> {
+    use std::collections::HashSet;
+
+    let mut seen_heights = HashSet::new();
+    let mut qualities = Vec::new();
+
+    // Collect all video formats with heights
+    let mut video_formats: Vec<_> = raw_formats
+        .iter()
+        .filter(|f| {
+            f.vcodec.as_ref().map(|v| v != "none").unwrap_or(false) && f.height.is_some()
+        })
+        .collect();
+
+    // Sort by height descending
+    video_formats.sort_by(|a, b| b.height.cmp(&a.height));
+
+    for format in video_formats {
+        if let Some(height) = format.height {
+            if !seen_heights.contains(&height) {
+                seen_heights.insert(height);
+
+                let filesize_approx = format.filesize.or(format.filesize_approx).map(format_bytes);
+
+                qualities.push(VideoQuality {
+                    height,
+                    label: format!("{}p", height),
+                    filesize_approx,
+                });
+            }
+        }
+    }
+
+    // Limit to common resolutions
+    qualities.truncate(8);
+    qualities
 }
 
 /// Filter formats to show only the most useful options
@@ -211,7 +277,8 @@ fn extract_height(quality: &str) -> u32 {
 /// Download video with progress reporting
 pub async fn download_video(
     url: &str,
-    format_id: &str,
+    mode: &DownloadMode,
+    quality: &str,
     output_path: &str,
     start_time: Option<f64>,
     end_time: Option<f64>,
@@ -220,14 +287,53 @@ pub async fn download_video(
     validate_youtube_url(url)?;
 
     let mut args = vec![
-        "--newline".to_string(),       // Progress on new lines
+        "--newline".to_string(), // Progress on new lines
         "--no-warnings".to_string(),
         "--no-playlist".to_string(),
-        "-f".to_string(),
-        format_id.to_string(),
-        "-o".to_string(),
-        output_path.to_string(),
     ];
+
+    // Build format string based on mode
+    match mode {
+        DownloadMode::VideoWithAudio => {
+            // For video+audio: select best video up to specified height + best audio, merge
+            // Format: bestvideo[height<=X]+bestaudio/best[height<=X]
+            // The fallback handles cases where separate streams aren't available
+            let height: u32 = quality.parse().unwrap_or(1080);
+            let format_str = format!(
+                "bestvideo[height<={}]+bestaudio/best[height<={}]",
+                height, height
+            );
+            args.push("-f".to_string());
+            args.push(format_str);
+
+            // Merge into mp4 container
+            args.push("--merge-output-format".to_string());
+            args.push("mp4".to_string());
+        }
+        DownloadMode::AudioOnly => {
+            // For audio only: extract audio and convert to mp3
+            args.push("-f".to_string());
+            args.push("bestaudio/best".to_string());
+
+            // Extract audio to mp3
+            args.push("-x".to_string()); // Extract audio
+            args.push("--audio-format".to_string());
+            args.push("mp3".to_string());
+
+            // Set audio quality based on selection
+            let audio_quality = match quality {
+                "high" => "0",   // Best quality (VBR ~245kbps)
+                "medium" => "5", // Medium quality (VBR ~130kbps)
+                "low" => "9",    // Lower quality (VBR ~65kbps)
+                _ => "0",
+            };
+            args.push("--audio-quality".to_string());
+            args.push(audio_quality.to_string());
+        }
+    }
+
+    args.push("-o".to_string());
+    args.push(output_path.to_string());
 
     // yt-dlp supports --download-sections for cutting during download
     // This is more efficient than downloading then cutting with ffmpeg
