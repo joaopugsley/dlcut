@@ -7,12 +7,25 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <main class="container">
-      <!-- Header -->
-      <header class="header">
-        <h1>DLCut</h1>
-        <p class="subtitle">YouTube Video Downloader & Cutter</p>
+    <div class="window-frame">
+      <!-- Custom Titlebar -->
+      <header class="titlebar">
+        <span class="titlebar-title">DLCut</span>
+        <div class="titlebar-controls">
+          <button id="btn-minimize" class="titlebar-btn" aria-label="Minimize">
+            <svg width="10" height="1" viewBox="0 0 10 1">
+              <rect width="10" height="1" fill="currentColor"/>
+            </svg>
+          </button>
+          <button id="btn-close" class="titlebar-btn titlebar-btn-close" aria-label="Close">
+            <svg width="10" height="10" viewBox="0 0 10 10">
+              <path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
       </header>
+
+      <main class="container">
 
       <!-- URL Input -->
       <section class="section">
@@ -131,6 +144,7 @@
         <div id="status-message" class="status"></div>
       </section>
     </main>
+    </div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

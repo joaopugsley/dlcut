@@ -14,12 +14,14 @@
     "windows": [
       {
         "title": "DLCut",
-        "width": 680,
-        "height": 720,
-        "resizable": true,
-        "minWidth": 520,
-        "minHeight": 600,
-        "center": true
+        "width": 520,
+        "height": 150,
+        "resizable": false,
+        "maximizable": false,
+        "center": true,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false
       }
     ],
     "security": {

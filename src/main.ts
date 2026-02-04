@@ -28,6 +28,69 @@ declare global {
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
+// Window controls
+const minimizeBtn = document.getElementById("btn-minimize") as HTMLButtonElement;
+const closeBtn = document.getElementById("btn-close") as HTMLButtonElement;
+
+// Window reference for resizing
+let appWindow: Awaited<ReturnType<typeof import("@tauri-apps/api/window").getCurrentWindow>> | null = null;
+const WINDOW_WIDTH = 520;
+let resizeTimeout: number | null = null;
+
+async function setupWindowControls() {
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  appWindow = getCurrentWindow();
+
+  minimizeBtn.addEventListener("click", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await appWindow!.minimize();
+  });
+
+  closeBtn.addEventListener("click", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await appWindow!.close();
+  });
+
+  // Enable window dragging on titlebar
+  const titlebar = document.querySelector(".titlebar") as HTMLElement;
+  titlebar.addEventListener("mousedown", async (e) => {
+    // Only drag if clicking on the titlebar itself, not on buttons
+    if ((e.target as HTMLElement).closest(".titlebar-controls")) return;
+    await appWindow!.startDragging();
+  });
+
+  // Initial resize
+  await doResize();
+}
+
+// Resize window to fit content (debounced)
+function resizeWindowToContent() {
+  if (resizeTimeout) {
+    clearTimeout(resizeTimeout);
+  }
+  resizeTimeout = window.setTimeout(() => doResize(), 10);
+}
+
+async function doResize() {
+  if (!appWindow) return;
+
+  const { LogicalSize } = await import("@tauri-apps/api/dpi");
+  const windowFrame = document.querySelector(".window-frame") as HTMLElement;
+
+  // Wait for layout to settle
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+
+  // Get the actual content height
+  const contentHeight = windowFrame.scrollHeight;
+
+  // Add small padding for the border
+  const targetHeight = contentHeight + 2;
+
+  await appWindow.setSize(new LogicalSize(WINDOW_WIDTH, targetHeight));
+}
+
 // Types matching Rust structures
 interface VideoFormat {
   format_id: string;
@@ -126,6 +189,9 @@ let activeHandle: "start" | "end" | null = null;
 
 // Initialize
 async function init() {
+  // Set up window controls (minimize, close)
+  await setupWindowControls();
+
   try {
     await invoke("check_dependencies");
   } catch (error) {
@@ -150,6 +216,12 @@ async function init() {
   document.addEventListener("mouseup", stopDrag);
   document.addEventListener("touchmove", onDrag, { passive: false });
   document.addEventListener("touchend", stopDrag);
+
+  // Resize when collapsible is toggled
+  const cutCollapsible = cutSection.querySelector("details");
+  if (cutCollapsible) {
+    cutCollapsible.addEventListener("toggle", () => resizeWindowToContent());
+  }
 
   // Listen for progress events from backend
   await listen<ProgressUpdate>("progress", (event) => {
@@ -525,31 +597,34 @@ function resetUI() {
   currentMode = "video_with_audio";
   sliderStartPercent = 0;
   sliderEndPercent = 100;
-  hide(videoInfoSkeleton);
-  hide(videoInfoSection);
-  hide(modeSection);
-  hide(qualitySection);
-  hide(cutSection);
-  hide(downloadSection);
-  hide(progressSection);
-  hide(statusSection);
-  hideError(urlError);
-  hideError(cutError);
+  videoInfoSkeleton.classList.add("hidden");
+  videoInfoSection.classList.add("hidden");
+  modeSection.classList.add("hidden");
+  qualitySection.classList.add("hidden");
+  cutSection.classList.add("hidden");
+  downloadSection.classList.add("hidden");
+  progressSection.classList.add("hidden");
+  statusSection.classList.add("hidden");
+  urlError.classList.add("hidden");
+  cutError.classList.add("hidden");
   qualitySelect.innerHTML = '<option value="">Select quality...</option>';
   modeVideoBtn.classList.add("active");
   modeAudioBtn.classList.remove("active");
   startTimeInput.value = "";
   endTimeInput.value = "";
   progressFill.style.width = "0%";
+  resizeWindowToContent();
 }
 
 // Helper functions
 function show(element: HTMLElement) {
   element.classList.remove("hidden");
+  resizeWindowToContent();
 }
 
 function hide(element: HTMLElement) {
   element.classList.add("hidden");
+  resizeWindowToContent();
 }
 
 function showError(element: HTMLElement, message: string) {
