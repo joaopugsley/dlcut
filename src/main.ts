@@ -6,6 +6,7 @@
  */
 
 // Tauri APIs are available globally via withGlobalTauri
+// @ts-expect-error
 declare global {
   interface Window {
     __TAURI__: {
@@ -25,7 +26,9 @@ declare global {
   }
 }
 
+// @ts-expect-error
 const { invoke } = window.__TAURI__.core;
+// @ts-expect-error
 const { listen } = window.__TAURI__.event;
 
 // Window controls
@@ -227,7 +230,7 @@ async function init() {
     resizeWindowToContent();
 
     // Listen for setup progress
-    await listen<SetupProgress>("setup-progress", (event) => {
+    await listen<SetupProgress>("setup-progress", (event: { payload: { message: string | null; progress: any; }; }) => {
       setupMessage.textContent = event.payload.message;
       setupProgressFill.style.width = `${event.payload.progress}%`;
     });
@@ -294,15 +297,15 @@ async function init() {
   });
 
   // Listen for progress events from backend
-  await listen<ProgressUpdate>("progress", (event) => {
+  await listen<ProgressUpdate>("progress", (event: { payload: ProgressUpdate; }) => {
     updateProgress(event.payload);
   });
 
-  await listen<string>("download-complete", (event) => {
+  await listen<string>("download-complete", (event: { payload: string; }) => {
     handleDownloadComplete(event.payload);
   });
 
-  await listen<string>("download-error", (event) => {
+  await listen<string>("download-error", (event: { payload: string; }) => {
     handleDownloadError(event.payload);
   });
 
@@ -363,7 +366,7 @@ async function fetchVideoInfo(url: string) {
   try {
     currentVideoInfo = await invoke<VideoInfo>("fetch_video_info", { url });
     hide(videoInfoSkeleton);
-    displayVideoInfo(currentVideoInfo);
+    displayVideoInfo(currentVideoInfo!);
   } catch (error) {
     hide(videoInfoSkeleton);
     showError(urlError, `${error}`);
