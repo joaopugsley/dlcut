@@ -4,6 +4,7 @@
 //! YouTube videos using yt-dlp and ffmpeg.
 
 pub mod commands;
+pub mod deps;
 pub mod error;
 pub mod ffmpeg;
 pub mod types;
@@ -24,6 +25,7 @@ pub fn run() {
         // Register IPC commands
         .invoke_handler(tauri::generate_handler![
             commands::check_dependencies,
+            commands::install_dependencies,
             commands::fetch_video_info,
             commands::validate_timestamps,
             commands::start_download,

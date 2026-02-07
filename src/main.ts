@@ -140,7 +140,22 @@ interface ProgressUpdate {
   eta: string | null;
 }
 
+interface DepsStatus {
+  ytdlp_installed: boolean;
+  ffmpeg_installed: boolean;
+  ready: boolean;
+}
+
+interface SetupProgress {
+  message: string;
+  progress: number;
+}
+
 // DOM Elements
+const setupSection = document.getElementById("setup-section") as HTMLElement;
+const setupMessage = document.getElementById("setup-message") as HTMLParagraphElement;
+const setupProgressFill = document.getElementById("setup-progress-fill") as HTMLDivElement;
+const urlSection = document.getElementById("url-section") as HTMLElement;
 const urlInput = document.getElementById("url-input") as HTMLInputElement;
 const urlError = document.getElementById("url-error") as HTMLParagraphElement;
 const videoInfoSkeleton = document.getElementById("video-info-skeleton") as HTMLElement;
@@ -175,6 +190,7 @@ const progressEta = document.getElementById("progress-eta") as HTMLSpanElement;
 const cancelBtn = document.getElementById("cancel-btn") as HTMLButtonElement;
 const statusSection = document.getElementById("status-section") as HTMLElement;
 const statusMessage = document.getElementById("status-message") as HTMLDivElement;
+const appFooter = document.querySelector(".app-footer") as HTMLElement;
 
 // State
 let currentVideoInfo: VideoInfo | null = null;
@@ -197,10 +213,42 @@ async function init() {
   const version = await getVersion();
   document.getElementById("app-version")!.textContent = `v${version}`;
 
-  try {
-    await invoke("check_dependencies");
-  } catch (error) {
-    showStatus(`${error}`, "error");
+  // Check if dependencies are installed
+  const depsStatus = await invoke<DepsStatus>("check_dependencies");
+
+  if (!depsStatus.ready) {
+    // Show setup section, hide URL input and footer
+    urlSection.classList.add("hidden");
+    appFooter.classList.add("hidden");
+    setupSection.classList.remove("hidden");
+    resizeWindowToContent();
+
+    // Listen for setup progress
+    await listen<SetupProgress>("setup-progress", (event) => {
+      setupMessage.textContent = event.payload.message;
+      setupProgressFill.style.width = `${event.payload.progress}%`;
+    });
+
+    // Install dependencies
+    try {
+      await invoke("install_dependencies");
+
+      // Setup complete
+      setupMessage.textContent = "Ready!";
+      setupProgressFill.style.width = "100%";
+
+      // Wait a moment then show main UI
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      setupSection.classList.add("hidden");
+      urlSection.classList.remove("hidden");
+      appFooter.classList.remove("hidden");
+      resizeWindowToContent();
+    } catch (error) {
+      setupMessage.textContent = `Setup failed: ${error}`;
+      setupProgressFill.style.width = "0%";
+      return;
+    }
   }
 
   // Set up event listeners

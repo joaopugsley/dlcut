@@ -29,6 +29,9 @@ pub enum AppError {
     #[error("ffmpeg not found. Please ensure ffmpeg is installed and in PATH")]
     FfmpegNotFound,
 
+    #[error("Dependency error: {0}")]
+    DependencyError(String),
+
     #[error("Operation cancelled")]
     Cancelled,
 

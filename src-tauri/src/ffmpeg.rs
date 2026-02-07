@@ -3,6 +3,7 @@
 //! Handles video cutting using ffmpeg when yt-dlp's built-in
 //! cutting doesn't suffice (e.g., for post-download trimming).
 
+use crate::deps;
 use crate::error::{AppError, Result};
 use crate::types::{ProgressStage, ProgressUpdate};
 use regex::Regex;
@@ -19,9 +20,15 @@ use std::os::windows::process::CommandExt;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+/// Get the ffmpeg command (local or system)
+async fn get_ffmpeg_cmd() -> String {
+    deps::get_ffmpeg_command().await
+}
+
 /// Check if ffmpeg is available
 pub async fn check_ffmpeg() -> Result<()> {
-    let mut cmd = Command::new("ffmpeg");
+    let ffmpeg_cmd = get_ffmpeg_cmd().await;
+    let mut cmd = Command::new(&ffmpeg_cmd);
     cmd.arg("-version");
 
     #[cfg(windows)]
@@ -69,7 +76,8 @@ pub async fn cut_video(
     // -t specifies duration from start point
     // -c copy uses stream copy (no re-encoding, very fast)
     // -avoid_negative_ts make_zero helps with timestamp issues
-    let mut cmd = Command::new("ffmpeg");
+    let ffmpeg_cmd = get_ffmpeg_cmd().await;
+    let mut cmd = Command::new(&ffmpeg_cmd);
     cmd.args([
         "-y",                                  // Overwrite output
         "-ss", &format!("{:.3}", start_time),  // Seek to start
@@ -164,7 +172,8 @@ async fn cut_video_reencode(
     let duration = end_time - start_time;
 
     // Re-encode with libx264 and aac
-    let mut cmd = Command::new("ffmpeg");
+    let ffmpeg_cmd = get_ffmpeg_cmd().await;
+    let mut cmd = Command::new(&ffmpeg_cmd);
     cmd.args([
         "-y",
         "-ss", &format!("{:.3}", start_time),

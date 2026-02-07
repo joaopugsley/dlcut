@@ -3,6 +3,7 @@
 //! Handles all interactions with the yt-dlp CLI tool.
 //! Commands are built using proper argument arrays to prevent injection.
 
+use crate::deps;
 use crate::error::{AppError, Result};
 use crate::types::{
     format_bytes, format_duration, AudioQuality, DownloadMode, ProgressStage, ProgressUpdate,
@@ -21,6 +22,11 @@ use std::os::windows::process::CommandExt;
 /// Windows flag to prevent console window from appearing
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// Get the yt-dlp command (local or system)
+async fn get_ytdlp_cmd() -> String {
+    deps::get_ytdlp_command().await
+}
 
 /// Raw format data from yt-dlp JSON output
 #[derive(Debug, Deserialize)]
@@ -51,7 +57,8 @@ struct RawVideoInfo {
 
 /// Check if yt-dlp is available
 pub async fn check_ytdlp() -> Result<()> {
-    let mut cmd = Command::new("yt-dlp");
+    let ytdlp_cmd = get_ytdlp_cmd().await;
+    let mut cmd = Command::new(&ytdlp_cmd);
     cmd.arg("--version");
 
     #[cfg(windows)]
@@ -96,7 +103,8 @@ pub async fn fetch_video_info(url: &str) -> Result<VideoInfo> {
 
     // Use yt-dlp to get JSON metadata
     // Arguments are passed as separate strings to prevent shell injection
-    let mut cmd = Command::new("yt-dlp");
+    let ytdlp_cmd = get_ytdlp_cmd().await;
+    let mut cmd = Command::new(&ytdlp_cmd);
     cmd.args([
         "--dump-json",       // Output JSON metadata
         "--no-download",     // Don't download the video
@@ -388,7 +396,8 @@ pub async fn download_video(
         })
         .await;
 
-    let mut cmd = Command::new("yt-dlp");
+    let ytdlp_cmd = get_ytdlp_cmd().await;
+    let mut cmd = Command::new(&ytdlp_cmd);
     cmd.args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

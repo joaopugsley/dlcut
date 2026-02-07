@@ -3,6 +3,7 @@
 //! These are the IPC endpoints exposed to the frontend.
 //! All inputs are validated before processing.
 
+use crate::deps::{self, DepsStatus};
 use crate::error::{AppError, Result};
 use crate::types::{parse_timestamp, DownloadRequest, ProgressStage, ProgressUpdate, VideoInfo};
 use crate::ytdlp;
@@ -26,10 +27,20 @@ impl Default for AppState {
 
 /// Check if required tools are available
 #[tauri::command]
-pub async fn check_dependencies() -> Result<()> {
-    ytdlp::check_ytdlp().await?;
-    // ffmpeg is optional - only needed for post-download cutting
-    // We don't fail if it's not available since yt-dlp can cut during download
+pub async fn check_dependencies() -> Result<DepsStatus> {
+    Ok(deps::check_deps_status().await)
+}
+
+/// Install missing dependencies
+#[tauri::command]
+pub async fn install_dependencies(app: AppHandle) -> Result<()> {
+    deps::install_dependencies(|message, progress| {
+        let _ = app.emit("setup-progress", serde_json::json!({
+            "message": message,
+            "progress": progress
+        }));
+    }).await?;
+
     Ok(())
 }
 

@@ -27,8 +27,19 @@
 
       <main class="container">
 
+      <!-- Setup Section (shown on first run) -->
+      <section id="setup-section" class="section hidden">
+        <div class="setup-content">
+          <p id="setup-message" class="setup-message">Preparing DLCut for first use...</p>
+          <div class="progress-bar">
+            <div id="setup-progress-fill" class="progress-fill"></div>
+          </div>
+          <p class="setup-hint">This only happens once</p>
+        </div>
+      </section>
+
       <!-- URL Input -->
-      <section class="section">
+      <section id="url-section" class="section">
         <label for="url-input" class="label">YouTube URL</label>
         <input
           type="text"
