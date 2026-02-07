@@ -473,6 +473,38 @@ body {
   border: 1px solid var(--color-success);
 }
 
+#status-text {
+  display: block;
+  white-space: pre-line;
+}
+
+/* Open Folder Button (inside success status) */
+.btn-open-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: var(--space-sm);
+  padding: 0;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-success);
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.15s ease;
+}
+
+.btn-open-folder:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.btn-open-folder svg {
+  flex-shrink: 0;
+}
+
 .error {
   color: var(--color-error);
   font-size: 12px;

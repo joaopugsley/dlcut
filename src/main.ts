@@ -190,6 +190,8 @@ const progressEta = document.getElementById("progress-eta") as HTMLSpanElement;
 const cancelBtn = document.getElementById("cancel-btn") as HTMLButtonElement;
 const statusSection = document.getElementById("status-section") as HTMLElement;
 const statusMessage = document.getElementById("status-message") as HTMLDivElement;
+const statusText = document.getElementById("status-text") as HTMLSpanElement;
+const openFolderBtn = document.getElementById("open-folder-btn") as HTMLButtonElement;
 const appFooter = document.querySelector(".app-footer") as HTMLElement;
 
 // State
@@ -197,6 +199,7 @@ let currentVideoInfo: VideoInfo | null = null;
 let fetchTimeout: number | null = null;
 let isDownloading = false;
 let currentMode: DownloadMode = "video_with_audio";
+let lastDownloadedPath: string | null = null;
 
 // Slider state
 let sliderStartPercent = 0;
@@ -259,6 +262,7 @@ async function init() {
   qualitySelect.addEventListener("change", handleQualityChange);
   downloadBtn.addEventListener("click", handleDownload);
   cancelBtn.addEventListener("click", handleCancel);
+  openFolderBtn.addEventListener("click", handleOpenFolder);
 
   // Range slider events
   handleStart.addEventListener("mousedown", (e) => startDrag(e, "start"));
@@ -624,16 +628,40 @@ function updateProgress(progress: ProgressUpdate) {
   progressPercent.textContent = `${Math.round(progress.percent)}%`;
   progressFill.style.width = `${progress.percent}%`;
 
-  progressSpeed.textContent = progress.speed || "";
-  progressEta.textContent = progress.eta ? `ETA: ${progress.eta}` : "";
+  const newSpeed = progress.speed || "";
+  const newEta = progress.eta ? `ETA: ${progress.eta}` : "";
+
+  // Resize window when speed/ETA visibility changes (content height may change)
+  const hadDetails = progressSpeed.textContent !== "" || progressEta.textContent !== "";
+  const hasDetails = newSpeed !== "" || newEta !== "";
+
+  progressSpeed.textContent = newSpeed;
+  progressEta.textContent = newEta;
+
+  if (hasDetails !== hadDetails) {
+    resizeWindowToContent();
+  }
 }
 
 // Handle download completion
 function handleDownloadComplete(path: string) {
   isDownloading = false;
+  lastDownloadedPath = path;
   hide(progressSection);
   show(downloadSection);
   showStatus(`Downloaded successfully to:\n${path}`, "success");
+  openFolderBtn.classList.remove("hidden");
+  resizeWindowToContent();
+}
+
+// Open folder containing the downloaded file
+async function handleOpenFolder() {
+  if (!lastDownloadedPath) return;
+  try {
+    await invoke("show_in_folder", { path: lastDownloadedPath });
+  } catch {
+    // Silently ignore - file may have been moved
+  }
 }
 
 // Handle download error
@@ -671,6 +699,7 @@ function resetUI() {
   downloadSection.classList.add("hidden");
   progressSection.classList.add("hidden");
   statusSection.classList.add("hidden");
+  openFolderBtn.classList.add("hidden");
   urlError.classList.add("hidden");
   cutError.classList.add("hidden");
   qualitySelect.innerHTML = '<option value="">Select quality...</option>';
@@ -703,8 +732,11 @@ function hideError(element: HTMLElement) {
 }
 
 function showStatus(message: string, type: "success" | "error") {
-  statusMessage.textContent = message;
+  statusText.textContent = message;
   statusMessage.className = `status ${type}`;
+  if (type !== "success") {
+    openFolderBtn.classList.add("hidden");
+  }
   show(statusSection);
 }
 

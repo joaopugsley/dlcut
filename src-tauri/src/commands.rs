@@ -245,6 +245,47 @@ pub fn generate_filename(title: String, format_ext: String) -> String {
     format!("{}.{}", truncated.trim(), format_ext)
 }
 
+/// Reveal a file in the system file manager
+#[tauri::command]
+pub async fn show_in_folder(path: String) -> Result<()> {
+    let path_ref = std::path::Path::new(&path);
+    if !path_ref.exists() {
+        return Err(AppError::DownloadError("File not found".to_string()));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // explorer returns exit code 1 even on success, so just check it ran
+        tokio::process::Command::new("explorer")
+            .arg(format!("/select,{}", path))
+            .creation_flags(0x08000000)
+            .output()
+            .await
+            .map_err(|_| AppError::DownloadError("Failed to open file explorer".to_string()))?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        tokio::process::Command::new("open")
+            .arg("-R")
+            .arg(&path)
+            .output()
+            .await
+            .map_err(|_| AppError::DownloadError("Failed to open Finder".to_string()))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        tokio::process::Command::new("xdg-open")
+            .arg(path_ref.parent().unwrap_or(path_ref))
+            .output()
+            .await
+            .map_err(|_| AppError::DownloadError("Failed to open file manager".to_string()))?;
+    }
+
+    Ok(())
+}
+
 /// Get default download directory
 #[tauri::command]
 pub fn get_default_download_dir() -> Option<String> {
