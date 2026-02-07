@@ -264,16 +264,6 @@ pub async fn show_in_folder(path: String) -> Result<()> {
             .map_err(|_| AppError::DownloadError("Failed to open file explorer".to_string()))?;
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        tokio::process::Command::new("open")
-            .arg("-R")
-            .arg(&path)
-            .output()
-            .await
-            .map_err(|_| AppError::DownloadError("Failed to open Finder".to_string()))?;
-    }
-
     #[cfg(target_os = "linux")]
     {
         tokio::process::Command::new("xdg-open")

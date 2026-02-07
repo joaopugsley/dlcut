@@ -156,8 +156,6 @@ where
 
     #[cfg(windows)]
     let url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
-    #[cfg(target_os = "macos")]
-    let url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos";
     #[cfg(target_os = "linux")]
     let url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp";
 
@@ -214,33 +212,6 @@ where
 
         // Clean up zip
         let _ = tokio::fs::remove_file(&zip_path).await;
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        // For macOS, download from evermeet.cx (static build)
-        let url = "https://evermeet.cx/ffmpeg/getrelease/zip";
-        let zip_path = deps_dir.join("ffmpeg.zip");
-
-        download_file(url, &zip_path, |progress| {
-            on_progress("Downloading ffmpeg...", 50.0 + progress * 0.4);
-        }).await?;
-
-        on_progress("Extracting ffmpeg...", 90.0);
-
-        // Extract
-        extract_ffmpeg_from_zip_macos(&zip_path, &deps_dir).await?;
-
-        let _ = tokio::fs::remove_file(&zip_path).await;
-
-        // Make executable
-        use std::os::unix::fs::PermissionsExt;
-        let ffmpeg_path = get_ffmpeg_path()?;
-        if ffmpeg_path.exists() {
-            let mut perms = tokio::fs::metadata(&ffmpeg_path).await?.permissions();
-            perms.set_mode(0o755);
-            tokio::fs::set_permissions(&ffmpeg_path, perms).await?;
-        }
     }
 
     #[cfg(target_os = "linux")]
@@ -343,42 +314,6 @@ async fn extract_ffmpeg_from_zip(zip_path: &PathBuf, target_dir: &PathBuf) -> Re
     }
 
     Err(AppError::DependencyError("ffmpeg.exe not found in archive".into()))
-}
-
-/// Extract ffmpeg from zip (macOS)
-#[cfg(target_os = "macos")]
-async fn extract_ffmpeg_from_zip_macos(zip_path: &PathBuf, target_dir: &PathBuf) -> Result<()> {
-    use std::io::Read;
-
-    let file = std::fs::File::open(zip_path)
-        .map_err(|e| AppError::DependencyError(format!("Failed to open zip: {}", e)))?;
-
-    let mut archive = zip::ZipArchive::new(file)
-        .map_err(|e| AppError::DependencyError(format!("Failed to read zip: {}", e)))?;
-
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i)
-            .map_err(|e| AppError::DependencyError(format!("Failed to read zip entry: {}", e)))?;
-
-        let name = file.name().to_string();
-
-        if name == "ffmpeg" || name.ends_with("/ffmpeg") {
-            let target_path = target_dir.join("ffmpeg");
-            let mut outfile = std::fs::File::create(&target_path)
-                .map_err(|e| AppError::DependencyError(format!("Failed to create ffmpeg: {}", e)))?;
-
-            let mut contents = Vec::new();
-            file.read_to_end(&mut contents)
-                .map_err(|e| AppError::DependencyError(format!("Failed to read ffmpeg: {}", e)))?;
-
-            outfile.write_all(&contents)
-                .map_err(|e| AppError::DependencyError(format!("Failed to write ffmpeg: {}", e)))?;
-
-            return Ok(());
-        }
-    }
-
-    Err(AppError::DependencyError("ffmpeg not found in archive".into()))
 }
 
 /// Extract ffmpeg from tar.xz (Linux)
