@@ -33,6 +33,8 @@ pub fn run() {
             commands::generate_filename,
             commands::get_default_download_dir,
             commands::show_in_folder,
+            commands::get_video_duration,
+            commands::cut_local_video,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

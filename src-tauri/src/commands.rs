@@ -5,6 +5,7 @@
 
 use crate::deps::{self, DepsStatus};
 use crate::error::{AppError, Result};
+use crate::ffmpeg;
 use crate::types::{parse_timestamp, DownloadRequest, ProgressStage, ProgressUpdate, VideoInfo};
 use crate::ytdlp;
 use std::sync::Arc;
@@ -282,6 +283,85 @@ pub fn get_default_download_dir() -> Option<String> {
     dirs::download_dir()
         .or_else(dirs::home_dir)
         .map(|p| p.to_string_lossy().to_string())
+}
+
+/// Get video duration using ffprobe
+#[tauri::command]
+pub async fn get_video_duration(path: String) -> Result<f64> {
+    ffmpeg::get_duration(&path).await
+}
+
+/// Cut a local video file
+#[tauri::command]
+pub async fn cut_local_video(
+    input_path: String,
+    output_path: String,
+    start_time: f64,
+    end_time: f64,
+    state: State<'_, Arc<AppState>>,
+    app: AppHandle,
+) -> Result<()> {
+    // Validate inputs
+    if start_time < 0.0 {
+        return Err(AppError::InvalidTimestamp("Start time cannot be negative".to_string()));
+    }
+    if end_time <= start_time {
+        return Err(AppError::InvalidTimestamp("End time must be after start time".to_string()));
+    }
+
+    let input = std::path::Path::new(&input_path);
+    if !input.exists() {
+        return Err(AppError::CutError("Input file not found".to_string()));
+    }
+
+    // Create progress channel
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<ProgressUpdate>(32);
+
+    // Spawn progress forwarding task with cut-specific events
+    let app_for_progress = app.clone();
+    tokio::spawn(async move {
+        while let Some(progress) = rx.recv().await {
+            let _ = app_for_progress.emit("cut-progress", &progress);
+        }
+    });
+
+    let app_clone = app.clone();
+    let input_clone = input_path.clone();
+    let output_clone = output_path.clone();
+
+    // Spawn cut task
+    let state_clone = state.inner().clone();
+    let handle = tokio::spawn(async move {
+        let result = ffmpeg::cut_video(
+            &input_clone,
+            &output_clone,
+            start_time,
+            end_time,
+            tx,
+        )
+        .await;
+
+        match result {
+            Ok(_) => {
+                let _ = app_clone.emit("cut-complete", &output_clone);
+            }
+            Err(e) => {
+                let _ = app_clone.emit("cut-error", e.to_string());
+            }
+        }
+
+        // Clear active task
+        let mut active = state_clone.active_download.lock().await;
+        *active = None;
+    });
+
+    // Store as active download (reuse the same mutex for simplicity)
+    {
+        let mut active = state.active_download.lock().await;
+        *active = Some(handle);
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

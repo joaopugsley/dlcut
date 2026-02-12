@@ -16,9 +16,6 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
 /// Windows flag to prevent console window from appearing
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -106,11 +103,11 @@ pub async fn fetch_video_info(url: &str) -> Result<VideoInfo> {
     let ytdlp_cmd = get_ytdlp_cmd().await;
     let mut cmd = Command::new(&ytdlp_cmd);
     cmd.args([
-        "--dump-json",       // Output JSON metadata
-        "--no-download",     // Don't download the video
-        "--no-warnings",     // Suppress warnings
-        "--no-playlist",     // Only process single video
-        "--flat-playlist",   // Don't extract playlist videos
+        "--dump-json",     // Output JSON metadata
+        "--no-download",   // Don't download the video
+        "--no-warnings",   // Suppress warnings
+        "--no-playlist",   // Only process single video
+        "--flat-playlist", // Don't extract playlist videos
         url,
     ]);
 
@@ -203,7 +200,9 @@ fn convert_format(raw: &RawFormat) -> Option<VideoFormat> {
     let quality = if let Some(height) = raw.height {
         format!("{}p", height)
     } else {
-        raw.format_note.clone().unwrap_or_else(|| "unknown".to_string())
+        raw.format_note
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string())
     };
 
     let filesize = raw.filesize.or(raw.filesize_approx);
@@ -234,9 +233,7 @@ fn extract_video_qualities(raw_formats: &[RawFormat]) -> Vec<VideoQuality> {
     // Collect all video formats with heights
     let mut video_formats: Vec<_> = raw_formats
         .iter()
-        .filter(|f| {
-            f.vcodec.as_ref().map(|v| v != "none").unwrap_or(false) && f.height.is_some()
-        })
+        .filter(|f| f.vcodec.as_ref().map(|v| v != "none").unwrap_or(false) && f.height.is_some())
         .collect();
 
     // Sort by height descending
@@ -290,10 +287,7 @@ fn filter_formats(mut formats: Vec<VideoFormat>) -> Vec<VideoFormat> {
 }
 
 fn extract_height(quality: &str) -> u32 {
-    quality
-        .trim_end_matches('p')
-        .parse()
-        .unwrap_or(0)
+    quality.trim_end_matches('p').parse().unwrap_or(0)
 }
 
 /// Download video with progress reporting
@@ -413,11 +407,14 @@ pub async fn download_video(
     let mut reader = BufReader::new(stdout).lines();
 
     // Parse progress from yt-dlp output
-    let progress_regex = Regex::new(r"\[download\]\s+(\d+\.?\d*)%.*?(\d+\.?\d*\w+/s)?.*?ETA\s+(\S+)?").unwrap();
+    let progress_regex =
+        Regex::new(r"\[download\]\s+(\d+\.?\d*)%.*?(\d+\.?\d*\w+/s)?.*?ETA\s+(\S+)?").unwrap();
 
-    while let Some(line) = reader.next_line().await.map_err(|e| {
-        AppError::DownloadError(format!("Failed to read output: {}", e))
-    })? {
+    while let Some(line) = reader
+        .next_line()
+        .await
+        .map_err(|e| AppError::DownloadError(format!("Failed to read output: {}", e)))?
+    {
         if let Some(caps) = progress_regex.captures(&line) {
             let percent: f64 = caps
                 .get(1)
@@ -439,9 +436,10 @@ pub async fn download_video(
         }
     }
 
-    let status = child.wait().await.map_err(|e| {
-        AppError::DownloadError(format!("Failed to wait for yt-dlp: {}", e))
-    })?;
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| AppError::DownloadError(format!("Failed to wait for yt-dlp: {}", e)))?;
 
     if !status.success() {
         return Err(AppError::DownloadError("Download failed".to_string()));

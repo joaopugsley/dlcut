@@ -27,7 +27,7 @@ declare global {
 }
 
 // @ts-expect-error
-const { invoke } = window.__TAURI__.core;
+const { invoke, convertFileSrc } = window.__TAURI__.core;
 // @ts-expect-error
 const { listen } = window.__TAURI__.event;
 
@@ -189,7 +189,6 @@ const progressMessage = document.getElementById("progress-message") as HTMLSpanE
 const progressPercent = document.getElementById("progress-percent") as HTMLSpanElement;
 const progressFill = document.getElementById("progress-fill") as HTMLDivElement;
 const progressSpeed = document.getElementById("progress-speed") as HTMLSpanElement;
-const progressEta = document.getElementById("progress-eta") as HTMLSpanElement;
 const cancelBtn = document.getElementById("cancel-btn") as HTMLButtonElement;
 const statusSection = document.getElementById("status-section") as HTMLElement;
 const statusMessage = document.getElementById("status-message") as HTMLDivElement;
@@ -308,6 +307,9 @@ async function init() {
   await listen<string>("download-error", (event: { payload: string; }) => {
     handleDownloadError(event.payload);
   });
+
+  // Initialize cut tab
+  await initCutTab();
 
   // Focus URL input on load
   urlInput.focus();
@@ -632,16 +634,14 @@ function updateProgress(progress: ProgressUpdate) {
   progressFill.style.width = `${progress.percent}%`;
 
   const newSpeed = progress.speed || "";
-  const newEta = progress.eta ? `ETA: ${progress.eta}` : "";
 
-  // Resize window when speed/ETA visibility changes (content height may change)
-  const hadDetails = progressSpeed.textContent !== "" || progressEta.textContent !== "";
-  const hasDetails = newSpeed !== "" || newEta !== "";
+  // Resize window when speed visibility changes (content height may change)
+  const hadSpeed = progressSpeed.textContent !== "";
+  const hasSpeed = newSpeed !== "";
 
   progressSpeed.textContent = newSpeed;
-  progressEta.textContent = newEta;
 
-  if (hasDetails !== hadDetails) {
+  if (hasSpeed !== hadSpeed) {
     resizeWindowToContent();
   }
 }
@@ -652,9 +652,9 @@ function handleDownloadComplete(path: string) {
   lastDownloadedPath = path;
   hide(progressSection);
   show(downloadSection);
-  showStatus(`Downloaded successfully to:\n${path}`, "success");
+  // Unhide button before showing status so resize captures full height
   openFolderBtn.classList.remove("hidden");
-  resizeWindowToContent();
+  showStatus(`Downloaded successfully to:\n${path}`, "success");
 }
 
 // Open folder containing the downloaded file
@@ -741,6 +741,450 @@ function showStatus(message: string, type: "success" | "error") {
     openFolderBtn.classList.add("hidden");
   }
   show(statusSection);
+}
+
+// ==================== CUT TAB ====================
+
+// Tab DOM Elements
+const tabBtnDownload = document.getElementById("tab-btn-download") as HTMLButtonElement;
+const tabBtnCut = document.getElementById("tab-btn-cut") as HTMLButtonElement;
+const tabDownload = document.getElementById("tab-download") as HTMLElement;
+const tabCut = document.getElementById("tab-cut") as HTMLElement;
+
+// Cut DOM Elements
+const cutOpenBtn = document.getElementById("cut-open-btn") as HTMLButtonElement;
+const cutFileLabel = document.getElementById("cut-file-label") as HTMLSpanElement;
+const cutPreviewSection = document.getElementById("cut-preview-section") as HTMLElement;
+const cutVideo = document.getElementById("cut-video") as HTMLVideoElement;
+const cutPlayBtn = document.getElementById("cut-play-btn") as HTMLButtonElement;
+const cutPlayIcon = document.getElementById("cut-play-icon") as SVGElement;
+const cutPauseIcon = document.getElementById("cut-pause-icon") as SVGElement;
+const cutCurrentTime = document.getElementById("cut-current-time") as HTMLSpanElement;
+const cutTotalTime = document.getElementById("cut-total-time") as HTMLSpanElement;
+const cutTimeline = document.getElementById("cut-timeline") as HTMLElement;
+const cutTimelineSelection = document.getElementById("cut-timeline-selection") as HTMLElement;
+const cutTimelineDimLeft = document.getElementById("cut-timeline-dim-left") as HTMLElement;
+const cutTimelineDimRight = document.getElementById("cut-timeline-dim-right") as HTMLElement;
+const cutTrimStart = document.getElementById("cut-trim-start") as HTMLElement;
+const cutTrimEnd = document.getElementById("cut-trim-end") as HTMLElement;
+const cutPlayhead = document.getElementById("cut-playhead") as HTMLElement;
+const cutLabelStart = document.getElementById("cut-label-start") as HTMLElement;
+const cutLabelEnd = document.getElementById("cut-label-end") as HTMLElement;
+const cutGotoStart = document.getElementById("cut-goto-start") as HTMLButtonElement;
+const cutGotoEnd = document.getElementById("cut-goto-end") as HTMLButtonElement;
+const cutActionSection = document.getElementById("cut-action-section") as HTMLElement;
+const cutBtn = document.getElementById("cut-btn") as HTMLButtonElement;
+const cutProgressSection = document.getElementById("cut-progress-section") as HTMLElement;
+const cutProgressMessage = document.getElementById("cut-progress-message") as HTMLSpanElement;
+const cutProgressPercent = document.getElementById("cut-progress-percent") as HTMLSpanElement;
+const cutProgressFill = document.getElementById("cut-progress-fill") as HTMLDivElement;
+const cutStatusSection = document.getElementById("cut-status-section") as HTMLElement;
+const cutStatusMessage = document.getElementById("cut-status-message") as HTMLDivElement;
+const cutStatusText = document.getElementById("cut-status-text") as HTMLSpanElement;
+const cutOpenFolderBtn = document.getElementById("cut-open-folder-btn") as HTMLButtonElement;
+
+// Cut state
+let cutFilePath: string | null = null;
+let cutVideoDuration = 0;
+let cutSliderStartPercent = 0;
+let cutSliderEndPercent = 100;
+let cutActiveHandle: "start" | "end" | "playhead" | null = null;
+let isCutting = false;
+let lastCutPath: string | null = null;
+
+// Tab switching
+function switchTab(tab: "download" | "cut") {
+  if (tab === "download") {
+    tabBtnDownload.classList.add("active");
+    tabBtnCut.classList.remove("active");
+    tabDownload.classList.remove("hidden");
+    tabCut.classList.add("hidden");
+  } else {
+    tabBtnDownload.classList.remove("active");
+    tabBtnCut.classList.add("active");
+    tabDownload.classList.add("hidden");
+    tabCut.classList.remove("hidden");
+  }
+
+  resizeWindowToContent();
+}
+
+// Open video file for cutting
+async function handleCutOpenFile() {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+
+  const selected = await open({
+    multiple: false,
+    filters: [{
+      name: "Video",
+      extensions: ["mp4", "mkv", "avi", "mov", "webm", "flv", "wmv", "m4v"],
+    }],
+    title: "Open Video File",
+  });
+
+  if (!selected) return;
+
+  const filePath = typeof selected === "string" ? selected : selected.path;
+  if (!filePath) return;
+
+  cutFilePath = filePath;
+
+  // Update UI
+  const fileName = filePath.split(/[\\/]/).pop() || filePath;
+  cutFileLabel.textContent = fileName;
+  cutOpenBtn.classList.add("has-file");
+
+  // Hide previous status
+  cutStatusSection.classList.add("hidden");
+  cutProgressSection.classList.add("hidden");
+  resizeWindowToContent();
+
+  // Load video preview
+  const assetUrl = convertFileSrc(filePath);
+  cutVideo.src = assetUrl;
+  cutVideo.load();
+}
+
+// Video loaded - show preview and controls
+function handleCutVideoLoaded() {
+  cutVideoDuration = cutVideo.duration;
+  cutTotalTime.textContent = formatTime(cutVideoDuration);
+  cutCurrentTime.textContent = formatTime(0);
+
+  // Reset slider and playhead
+  cutSliderStartPercent = 0;
+  cutSliderEndPercent = 100;
+  updateCutSliderUI();
+  // Seek to cut start and position playhead there
+  cutVideo.currentTime = 0;
+  updatePlayheadPosition(cutSliderStartPercent);
+
+  // Show sections
+  cutPreviewSection.classList.remove("hidden");
+  cutActionSection.classList.remove("hidden");
+  resizeWindowToContent();
+}
+
+// Video time update
+function handleCutTimeUpdate() {
+  if (cutVideoDuration <= 0) return;
+
+  // Clamp to cut range (with tolerance for keyframe seeking)
+  const seekTolerance = 0.15;
+  const startTime = (cutSliderStartPercent / 100) * cutVideoDuration;
+  const endTime = (cutSliderEndPercent / 100) * cutVideoDuration;
+
+  if (cutVideo.currentTime >= endTime) {
+    cutVideo.pause();
+    cutVideo.currentTime = endTime;
+    updateCutPlayButton();
+  } else if (cutVideo.currentTime < startTime - seekTolerance) {
+    cutVideo.currentTime = startTime;
+  }
+
+  cutCurrentTime.textContent = formatTime(cutVideo.currentTime);
+
+  const percent = (cutVideo.currentTime / cutVideoDuration) * 100;
+  updatePlayheadPosition(percent);
+}
+
+// Play/Pause toggle
+function toggleCutPlayback() {
+  if (cutVideo.paused) {
+    // If at end marker, seek to start marker
+    const startTime = (cutSliderStartPercent / 100) * cutVideoDuration;
+    const endTime = (cutSliderEndPercent / 100) * cutVideoDuration;
+    if (cutVideo.currentTime >= endTime || cutVideo.currentTime < startTime) {
+      cutVideo.currentTime = startTime;
+    }
+    cutVideo.play();
+  } else {
+    cutVideo.pause();
+  }
+  updateCutPlayButton();
+}
+
+function updateCutPlayButton() {
+  if (cutVideo.paused) {
+    cutPlayIcon.classList.remove("hidden");
+    cutPauseIcon.classList.add("hidden");
+  } else {
+    cutPlayIcon.classList.add("hidden");
+    cutPauseIcon.classList.remove("hidden");
+  }
+}
+
+// Cut slider functions
+function startCutDrag(e: MouseEvent | TouchEvent, handle: "start" | "end") {
+  e.preventDefault();
+  cutActiveHandle = handle;
+}
+
+function onCutDrag(e: MouseEvent | TouchEvent) {
+  if (!cutActiveHandle || cutVideoDuration <= 0) return;
+  e.preventDefault();
+
+  const track = cutTimeline.querySelector(".timeline-track") as HTMLElement;
+  const rect = track.getBoundingClientRect();
+  const clientX = e instanceof MouseEvent ? e.clientX : e.touches[0].clientX;
+  let percent = ((clientX - rect.left) / rect.width) * 100;
+  percent = Math.max(0, Math.min(100, percent));
+
+  if (cutActiveHandle === "playhead") {
+    // Constrain playhead to cut range
+    const seekPercent = Math.max(cutSliderStartPercent, Math.min(cutSliderEndPercent, percent));
+    const time = (seekPercent / 100) * cutVideoDuration;
+    cutVideo.currentTime = time;
+    updatePlayheadPosition(seekPercent);
+  } else {
+    const minGap = 2;
+    if (cutActiveHandle === "start") {
+      cutSliderStartPercent = Math.min(percent, cutSliderEndPercent - minGap);
+    } else {
+      cutSliderEndPercent = Math.max(percent, cutSliderStartPercent + minGap);
+    }
+
+    updateCutSliderUI();
+
+    // Seek video to trim handle position for preview
+    const clampedPercent = cutActiveHandle === "start" ? cutSliderStartPercent : cutSliderEndPercent;
+    const time = (clampedPercent / 100) * cutVideoDuration;
+    cutVideo.currentTime = time;
+    updatePlayheadPosition(clampedPercent);
+  }
+}
+
+function stopCutDrag() {
+  cutActiveHandle = null;
+}
+
+function updateCutSliderUI() {
+  const selectionWidth = cutSliderEndPercent - cutSliderStartPercent;
+
+  cutTimelineDimLeft.style.width = `${cutSliderStartPercent}%`;
+  cutTimelineSelection.style.width = `${selectionWidth}%`;
+  cutTimelineDimRight.style.width = `${100 - cutSliderEndPercent}%`;
+
+  const startTime = (cutSliderStartPercent / 100) * cutVideoDuration;
+  const endTime = (cutSliderEndPercent / 100) * cutVideoDuration;
+
+  cutLabelStart.textContent = formatTime(startTime);
+  cutLabelEnd.textContent = formatTime(endTime);
+}
+
+// Position the playhead, remapping within the cut range so it stays
+// visually between the inner edges of the 8px trim handles.
+const TRIM_HANDLE_PX = 8;
+
+function updatePlayheadPosition(percent: number) {
+  const track = cutTimeline.querySelector(".timeline-track") as HTMLElement;
+  const trackWidth = track.offsetWidth;
+  if (trackWidth <= 0) {
+    cutPlayhead.style.left = `${percent}%`;
+    return;
+  }
+
+  const offsetPct = (TRIM_HANDLE_PX / trackWidth) * 100;
+  const range = cutSliderEndPercent - cutSliderStartPercent;
+
+  // Tolerance for floating point / keyframe seeking differences
+  const epsilon = 0.5;
+
+  // If within (or very near) the cut range, remap to the inner area between trim handles
+  if (range > 0 && percent >= cutSliderStartPercent - epsilon && percent <= cutSliderEndPercent + epsilon) {
+    const innerStart = cutSliderStartPercent + offsetPct;
+    const innerEnd = cutSliderEndPercent - offsetPct;
+
+    if (innerEnd > innerStart) {
+      const t = Math.max(0, Math.min(1, (percent - cutSliderStartPercent) / range));
+      const adjusted = innerStart + t * (innerEnd - innerStart);
+      cutPlayhead.style.left = `${adjusted}%`;
+    } else {
+      cutPlayhead.style.left = `${cutSliderStartPercent + range / 2}%`;
+    }
+  } else {
+    cutPlayhead.style.left = `${percent}%`;
+  }
+}
+
+// Handle cut button click
+async function handleCut() {
+  if (!cutFilePath || isCutting || cutVideoDuration <= 0) return;
+
+  const startTime = (cutSliderStartPercent / 100) * cutVideoDuration;
+  const endTime = (cutSliderEndPercent / 100) * cutVideoDuration;
+
+  if (endTime - startTime < 0.5) {
+    showCutStatus("Selected range is too short", "error");
+    return;
+  }
+
+  // Get file extension from input
+  const ext = cutFilePath.split(".").pop() || "mp4";
+  const baseName = cutFilePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "output";
+
+  const defaultDir = await invoke<string | null>("get_default_download_dir");
+  const { save } = await import("@tauri-apps/plugin-dialog");
+
+  const outputPath = await save({
+    defaultPath: defaultDir ? `${defaultDir}/${baseName}_cut.${ext}` : `${baseName}_cut.${ext}`,
+    filters: [
+      { name: "Video", extensions: [ext] },
+      { name: "All Files", extensions: ["*"] },
+    ],
+    title: "Save Cut Video As",
+  });
+
+  if (!outputPath) return;
+
+  isCutting = true;
+  cutActionSection.classList.add("hidden");
+  cutStatusSection.classList.add("hidden");
+  cutProgressSection.classList.remove("hidden");
+  cutProgressFill.style.width = "0%";
+  cutProgressMessage.textContent = "Starting cut...";
+  cutProgressPercent.textContent = "0%";
+  resizeWindowToContent();
+
+  try {
+    await invoke("cut_local_video", {
+      inputPath: cutFilePath,
+      outputPath,
+      startTime,
+      endTime,
+    });
+  } catch (error) {
+    handleCutError(`${error}`);
+  }
+}
+
+function handleCutProgress(progress: ProgressUpdate) {
+  cutProgressMessage.textContent = progress.message;
+  cutProgressPercent.textContent = `${Math.round(progress.percent)}%`;
+  cutProgressFill.style.width = `${progress.percent}%`;
+}
+
+function handleCutComplete(path: string) {
+  isCutting = false;
+  lastCutPath = path;
+  cutProgressSection.classList.add("hidden");
+  cutActionSection.classList.remove("hidden");
+  showCutStatus(`Cut saved to:\n${path}`, "success");
+  cutOpenFolderBtn.classList.remove("hidden");
+  resizeWindowToContent();
+}
+
+function handleCutError(error: string) {
+  isCutting = false;
+  cutProgressSection.classList.add("hidden");
+  cutActionSection.classList.remove("hidden");
+  showCutStatus(error, "error");
+}
+
+function showCutStatus(message: string, type: "success" | "error") {
+  cutStatusText.textContent = message;
+  cutStatusMessage.className = `status ${type}`;
+  if (type !== "success") {
+    cutOpenFolderBtn.classList.add("hidden");
+  }
+  cutStatusSection.classList.remove("hidden");
+  resizeWindowToContent();
+}
+
+async function handleCutOpenFolder() {
+  if (!lastCutPath) return;
+  try {
+    await invoke("show_in_folder", { path: lastCutPath });
+  } catch {
+    // Silently ignore
+  }
+}
+
+// Initialize cut tab event listeners
+async function initCutTab() {
+  // Tab switching
+  tabBtnDownload.addEventListener("click", () => switchTab("download"));
+  tabBtnCut.addEventListener("click", () => switchTab("cut"));
+
+  // File open
+  cutOpenBtn.addEventListener("click", handleCutOpenFile);
+
+  // Video events
+  cutVideo.addEventListener("loadedmetadata", handleCutVideoLoaded);
+  cutVideo.addEventListener("timeupdate", handleCutTimeUpdate);
+  cutVideo.addEventListener("click", toggleCutPlayback);
+  cutVideo.addEventListener("pause", updateCutPlayButton);
+  cutVideo.addEventListener("play", updateCutPlayButton);
+
+  // Playback controls
+  cutPlayBtn.addEventListener("click", toggleCutPlayback);
+
+  // Timeline trim handle events
+  cutTrimStart.addEventListener("mousedown", (e) => startCutDrag(e, "start"));
+  cutTrimEnd.addEventListener("mousedown", (e) => startCutDrag(e, "end"));
+  cutTrimStart.addEventListener("touchstart", (e) => startCutDrag(e, "start"), { passive: false });
+  cutTrimEnd.addEventListener("touchstart", (e) => startCutDrag(e, "end"), { passive: false });
+  document.addEventListener("mousemove", onCutDrag);
+  document.addEventListener("mouseup", stopCutDrag);
+  document.addEventListener("touchmove", onCutDrag, { passive: false });
+  document.addEventListener("touchend", stopCutDrag);
+
+  // Playhead drag
+  cutPlayhead.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    cutActiveHandle = "playhead";
+  });
+  cutPlayhead.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    cutActiveHandle = "playhead";
+  }, { passive: false });
+
+  // Click on timeline to seek (constrained to cut range)
+  cutTimeline.addEventListener("mousedown", (e) => {
+    if ((e.target as HTMLElement).closest(".timeline-trim")) return;
+    if ((e.target as HTMLElement).closest(".timeline-playhead")) return;
+    if (cutVideoDuration <= 0) return;
+    const track = cutTimeline.querySelector(".timeline-track") as HTMLElement;
+    const rect = track.getBoundingClientRect();
+    const rawPercent = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+    const percent = Math.max(cutSliderStartPercent, Math.min(cutSliderEndPercent, rawPercent));
+    const time = (percent / 100) * cutVideoDuration;
+    cutVideo.currentTime = time;
+    updatePlayheadPosition(percent);
+  });
+
+  // Go to cut start / end
+  cutGotoStart.addEventListener("click", () => {
+    if (cutVideoDuration <= 0) return;
+    cutVideo.currentTime = (cutSliderStartPercent / 100) * cutVideoDuration;
+    updatePlayheadPosition(cutSliderStartPercent);
+  });
+  cutGotoEnd.addEventListener("click", () => {
+    if (cutVideoDuration <= 0) return;
+    cutVideo.currentTime = (cutSliderEndPercent / 100) * cutVideoDuration;
+    updatePlayheadPosition(cutSliderEndPercent);
+  });
+
+  // Cut button
+  cutBtn.addEventListener("click", handleCut);
+
+  // Open folder
+  cutOpenFolderBtn.addEventListener("click", handleCutOpenFolder);
+
+  // Listen for cut events
+  await listen<ProgressUpdate>("cut-progress", (event: { payload: ProgressUpdate }) => {
+    handleCutProgress(event.payload);
+  });
+
+  await listen<string>("cut-complete", (event: { payload: string }) => {
+    handleCutComplete(event.payload);
+  });
+
+  await listen<string>("cut-error", (event: { payload: string }) => {
+    handleCutError(event.payload);
+  });
 }
 
 // Start the app

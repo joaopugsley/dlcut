@@ -480,7 +480,7 @@ body {
 
 /* Open Folder Button (inside success status) */
 .btn-open-folder {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 3px;
   margin-top: var(--space-sm);
@@ -725,6 +725,248 @@ body {
 .credits-link:hover {
   color: var(--color-text-secondary);
   text-decoration: underline;
+}
+
+/* Tab Bar */
+.tab-bar {
+  display: flex;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  background-color: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tab-btn {
+  flex: 1;
+  padding: var(--space-xs) var(--space-md);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.tab-btn:hover {
+  background-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.tab-btn.active {
+  background-color: var(--color-border);
+  color: var(--color-text);
+}
+
+/* Cut Tab - File Open */
+.cut-file-area {
+  display: flex;
+}
+
+.cut-open-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: var(--space-md);
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  background-color: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.cut-open-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.cut-open-btn.has-file {
+  border-style: solid;
+  color: var(--color-text);
+}
+
+/* Cut Tab - Video Preview */
+.cut-video-container {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background-color: #000;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.cut-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  cursor: pointer;
+}
+
+/* Timeline */
+.timeline {
+  position: relative;
+  height: 36px;
+  margin-top: var(--space-sm);
+  cursor: pointer;
+}
+
+.timeline-track {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 28px;
+  background-color: var(--color-border);
+  border-radius: var(--radius-sm);
+  transform: translateY(-50%);
+  overflow: hidden;
+  display: flex;
+}
+
+.timeline-dim {
+  background-color: var(--color-bg);
+  opacity: 0.7;
+  height: 100%;
+  flex-shrink: 0;
+}
+
+.timeline-selection {
+  position: relative;
+  height: 100%;
+  flex-shrink: 0;
+}
+
+.timeline-trim {
+  position: absolute;
+  top: 0;
+  width: 8px;
+  height: 100%;
+  background-color: var(--color-text-secondary);
+  cursor: ew-resize;
+  z-index: 3;
+  transition: background-color 0.15s ease;
+}
+
+.timeline-trim:hover,
+.timeline-trim:active {
+  background-color: var(--color-text);
+}
+
+.timeline-trim-start {
+  left: 0;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.timeline-trim-end {
+  right: 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.timeline-playhead {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 34px;
+  background-color: var(--color-error);
+  transform: translate(-50%, -50%);
+  cursor: ew-resize;
+  z-index: 4;
+  left: 0%;
+}
+
+/* Wider invisible hit area for easier grabbing */
+.timeline-playhead::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -8px;
+  right: -8px;
+}
+
+.timeline-playhead::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid var(--color-error);
+}
+
+/* Transport Controls */
+.cut-transport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-sm);
+}
+
+.cut-transport-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.cut-transport-btn:hover {
+  border-color: var(--color-border-focus);
+  color: var(--color-text);
+}
+
+.cut-play-btn {
+  width: 32px;
+  height: 32px;
+}
+
+.cut-time-display {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
+}
+
+.cut-time {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+}
+
+.cut-time-sep {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+/* Trim Labels */
+.timeline-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--space-xs);
+}
+
+.timeline-label {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
 }
 
 /* Responsive adjustments */

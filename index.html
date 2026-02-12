@@ -25,6 +25,12 @@
         </div>
       </header>
 
+      <!-- Tab Bar -->
+      <nav class="tab-bar">
+        <button id="tab-btn-download" class="tab-btn active" data-tab="download">Download</button>
+        <button id="tab-btn-cut" class="tab-btn" data-tab="cut">Cut</button>
+      </nav>
+
       <main class="container">
 
       <!-- Setup Section (shown on first run) -->
@@ -37,6 +43,9 @@
           <p class="setup-hint">This only happens once</p>
         </div>
       </section>
+
+      <!-- ==================== DOWNLOAD TAB ==================== -->
+      <div id="tab-download">
 
       <!-- URL Input -->
       <section id="url-section" class="section">
@@ -145,7 +154,6 @@
         </div>
         <div class="progress-details">
           <span id="progress-speed"></span>
-          <span id="progress-eta"></span>
         </div>
         <button id="cancel-btn" class="btn btn-secondary">Cancel</button>
       </section>
@@ -162,6 +170,110 @@
           </button>
         </div>
       </section>
+
+      </div><!-- end tab-download -->
+
+      <!-- ==================== CUT TAB ==================== -->
+      <div id="tab-cut" class="hidden">
+
+        <!-- File Open -->
+        <section class="section">
+          <div id="cut-file-area" class="cut-file-area">
+            <button id="cut-open-btn" class="cut-open-btn">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M2 5h5.333l2 2H18v10H2V5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                <path d="M10 9v6M7 12h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+              </svg>
+              <span id="cut-file-label">Open video file</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Video Preview -->
+        <section id="cut-preview-section" class="section hidden">
+          <div class="cut-video-container">
+            <video id="cut-video" class="cut-video" preload="metadata">
+              Your browser does not support video playback.
+            </video>
+          </div>
+
+          <!-- Timeline -->
+          <div id="cut-timeline" class="timeline">
+            <div class="timeline-track">
+              <div id="cut-timeline-dim-left" class="timeline-dim"></div>
+              <div id="cut-timeline-selection" class="timeline-selection">
+                <div id="cut-trim-start" class="timeline-trim timeline-trim-start" data-trim="start"></div>
+                <div id="cut-trim-end" class="timeline-trim timeline-trim-end" data-trim="end"></div>
+              </div>
+              <div id="cut-timeline-dim-right" class="timeline-dim"></div>
+            </div>
+            <div id="cut-playhead" class="timeline-playhead"></div>
+          </div>
+
+          <!-- Trim Labels -->
+          <div class="timeline-labels">
+            <span id="cut-label-start" class="timeline-label">0:00</span>
+            <span id="cut-label-end" class="timeline-label">0:00</span>
+          </div>
+
+          <!-- Transport Controls -->
+          <div class="cut-transport">
+            <button id="cut-goto-start" class="cut-transport-btn" aria-label="Go to cut start" title="Go to cut start">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                <path d="M2 2h2v10H2zM12 2L6 7l6 5z"/>
+              </svg>
+            </button>
+            <button id="cut-play-btn" class="cut-transport-btn cut-play-btn" aria-label="Play/Pause">
+              <svg id="cut-play-icon" width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                <path d="M3 1.5v11l9-5.5-9-5.5z"/>
+              </svg>
+              <svg id="cut-pause-icon" width="14" height="14" viewBox="0 0 14 14" fill="currentColor" class="hidden">
+                <path d="M3 1h3v12H3zM8 1h3v12H8z"/>
+              </svg>
+            </button>
+            <button id="cut-goto-end" class="cut-transport-btn" aria-label="Go to cut end" title="Go to cut end">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                <path d="M10 2h2v10h-2zM2 2l6 5-6 5z"/>
+              </svg>
+            </button>
+          </div>
+          <div class="cut-time-display">
+            <span id="cut-current-time" class="cut-time">0:00</span>
+            <span class="cut-time-sep">/</span>
+            <span id="cut-total-time" class="cut-time">0:00</span>
+          </div>
+        </section>
+
+        <!-- Cut Button -->
+        <section id="cut-action-section" class="section hidden">
+          <button id="cut-btn" class="btn btn-primary">Cut Video</button>
+        </section>
+
+        <!-- Cut Progress -->
+        <section id="cut-progress-section" class="section hidden">
+          <div class="progress-header">
+            <span id="cut-progress-message">Cutting...</span>
+            <span id="cut-progress-percent">0%</span>
+          </div>
+          <div class="progress-bar">
+            <div id="cut-progress-fill" class="progress-fill"></div>
+          </div>
+        </section>
+
+        <!-- Cut Status -->
+        <section id="cut-status-section" class="section hidden">
+          <div id="cut-status-message" class="status">
+            <span id="cut-status-text"></span>
+            <button id="cut-open-folder-btn" class="btn-open-folder hidden">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                <path d="M1.5 2.5h4.667l1.333 2H14.5v9H1.5V2.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+              </svg>
+              Show in folder
+            </button>
+          </div>
+        </section>
+
+      </div><!-- end tab-cut -->
 
       <!-- Footer -->
       <footer class="app-footer">

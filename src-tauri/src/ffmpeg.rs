@@ -13,9 +13,6 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
 /// Windows flag to prevent console window from appearing
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -79,13 +76,19 @@ pub async fn cut_video(
     let ffmpeg_cmd = get_ffmpeg_cmd().await;
     let mut cmd = Command::new(&ffmpeg_cmd);
     cmd.args([
-        "-y",                                  // Overwrite output
-        "-ss", &format!("{:.3}", start_time),  // Seek to start
-        "-i", input_path,                      // Input file
-        "-t", &format!("{:.3}", duration),     // Duration
-        "-c", "copy",                          // Stream copy (no re-encode)
-        "-avoid_negative_ts", "make_zero",
-        "-progress", "pipe:1",                 // Progress to stdout
+        "-y", // Overwrite output
+        "-ss",
+        &format!("{:.3}", start_time), // Seek to start
+        "-i",
+        input_path, // Input file
+        "-t",
+        &format!("{:.3}", duration), // Duration
+        "-c",
+        "copy", // Stream copy (no re-encode)
+        "-avoid_negative_ts",
+        "make_zero",
+        "-progress",
+        "pipe:1", // Progress to stdout
         output_path,
     ])
     .stdout(Stdio::piped())
@@ -105,9 +108,11 @@ pub async fn cut_video(
     let time_regex = Regex::new(r"out_time_ms=(\d+)").unwrap();
     let total_us = (duration * 1_000_000.0) as u64;
 
-    while let Some(line) = reader.next_line().await.map_err(|e| {
-        AppError::CutError(format!("Failed to read ffmpeg output: {}", e))
-    })? {
+    while let Some(line) = reader
+        .next_line()
+        .await
+        .map_err(|e| AppError::CutError(format!("Failed to read ffmpeg output: {}", e)))?
+    {
         if let Some(caps) = time_regex.captures(&line) {
             if let Some(time_ms) = caps.get(1).and_then(|m| m.as_str().parse::<u64>().ok()) {
                 let percent = if total_us > 0 {
@@ -129,13 +134,15 @@ pub async fn cut_video(
         }
     }
 
-    let status = child.wait().await.map_err(|e| {
-        AppError::CutError(format!("Failed to wait for ffmpeg: {}", e))
-    })?;
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| AppError::CutError(format!("Failed to wait for ffmpeg: {}", e)))?;
 
     if !status.success() {
         // Try with re-encoding if stream copy failed
-        return cut_video_reencode(input_path, output_path, start_time, end_time, progress_tx).await;
+        return cut_video_reencode(input_path, output_path, start_time, end_time, progress_tx)
+            .await;
     }
 
     let _ = progress_tx
@@ -176,15 +183,24 @@ async fn cut_video_reencode(
     let mut cmd = Command::new(&ffmpeg_cmd);
     cmd.args([
         "-y",
-        "-ss", &format!("{:.3}", start_time),
-        "-i", input_path,
-        "-t", &format!("{:.3}", duration),
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "23",
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-progress", "pipe:1",
+        "-ss",
+        &format!("{:.3}", start_time),
+        "-i",
+        input_path,
+        "-t",
+        &format!("{:.3}", duration),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "23",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-progress",
+        "pipe:1",
         output_path,
     ])
     .stdout(Stdio::piped())
@@ -225,9 +241,10 @@ async fn cut_video_reencode(
         }
     }
 
-    let status = child.wait().await.map_err(|e| {
-        AppError::CutError(format!("Failed to wait for ffmpeg: {}", e))
-    })?;
+    let status = child
+        .wait()
+        .await
+        .map_err(|e| AppError::CutError(format!("Failed to wait for ffmpeg: {}", e)))?;
 
     if !status.success() {
         return Err(AppError::CutError("ffmpeg encoding failed".to_string()));
@@ -244,6 +261,48 @@ async fn cut_video_reencode(
         .await;
 
     Ok(output_path.to_string())
+}
+
+/// Get video duration using ffprobe
+pub async fn get_duration(path: &str) -> Result<f64> {
+    let input = Path::new(path);
+    if !input.exists() {
+        return Err(AppError::CutError("File not found".to_string()));
+    }
+
+    // Use ffprobe to get duration
+    let ffmpeg_cmd = get_ffmpeg_cmd().await;
+    // Derive ffprobe path from ffmpeg path
+    let ffprobe_cmd = ffmpeg_cmd.replace("ffmpeg", "ffprobe");
+
+    let mut cmd = Command::new(&ffprobe_cmd);
+    cmd.args([
+        "-v", "quiet",
+        "-print_format", "json",
+        "-show_format",
+        path,
+    ]);
+
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    let output = cmd
+        .output()
+        .await
+        .map_err(|e| AppError::CutError(format!("Failed to run ffprobe: {}", e)))?;
+
+    if !output.status.success() {
+        return Err(AppError::CutError("ffprobe failed to read file".to_string()));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value = serde_json::from_str(&stdout)
+        .map_err(|e| AppError::CutError(format!("Failed to parse ffprobe output: {}", e)))?;
+
+    json["format"]["duration"]
+        .as_str()
+        .and_then(|d| d.parse::<f64>().ok())
+        .ok_or_else(|| AppError::CutError("Could not determine video duration".to_string()))
 }
 
 #[cfg(test)]
