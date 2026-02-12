@@ -208,15 +208,39 @@ let sliderStartPercent = 0;
 let sliderEndPercent = 100;
 let activeHandle: "start" | "end" | null = null;
 
+// Check for updates against GitHub releases
+async function checkForUpdates(currentVersion: string) {
+  try {
+    const res = await fetch("https://api.github.com/repos/joaopugsley/dlcut/releases/latest");
+    if (!res.ok) return;
+    const data = await res.json();
+    const latestTag: string = data.tag_name;
+    const latestVersion = latestTag.replace(/^v/, "");
+    if (latestVersion === currentVersion) return;
+
+    const updateLink = document.getElementById("update-link") as HTMLAnchorElement;
+    updateLink.textContent = `new version ${latestTag} is out`;
+    updateLink.classList.remove("hidden");
+    updateLink.addEventListener("click", async (e) => {
+      e.preventDefault();
+      const { open } = await import("@tauri-apps/plugin-shell");
+      await open(data.html_url);
+    });
+  } catch {
+    // Silently ignore - network may be unavailable
+  }
+}
+
 // Initialize
 async function init() {
   // Set up window controls (minimize, close)
   await setupWindowControls();
 
-  // Display app version
+  // Display app version and check for updates
   const { getVersion } = await import("@tauri-apps/api/app");
   const version = await getVersion();
   document.getElementById("app-version")!.textContent = `v${version}`;
+  checkForUpdates(version);
 
   // Check if dependencies are installed
   const depsStatus = await invoke<DepsStatus>("check_dependencies");
@@ -292,7 +316,7 @@ async function init() {
 
   document.getElementById("credits-github")!.addEventListener("click", async (e) => {
     e.preventDefault();
-    await open("https://github.com/joaopugsley");
+    await open("https://github.com/joaopugsley/dlcut");
   });
 
   // Listen for progress events from backend
@@ -754,6 +778,7 @@ const tabCut = document.getElementById("tab-cut") as HTMLElement;
 // Cut DOM Elements
 const cutOpenBtn = document.getElementById("cut-open-btn") as HTMLButtonElement;
 const cutFileLabel = document.getElementById("cut-file-label") as HTMLSpanElement;
+const cutSkeletonSection = document.getElementById("cut-skeleton-section") as HTMLElement;
 const cutPreviewSection = document.getElementById("cut-preview-section") as HTMLElement;
 const cutVideo = document.getElementById("cut-video") as HTMLVideoElement;
 const cutPlayBtn = document.getElementById("cut-play-btn") as HTMLButtonElement;
@@ -810,6 +835,9 @@ function switchTab(tab: "download" | "cut") {
 }
 
 // Open video file for cutting
+// Revoke previous blob URL to free memory
+let cutBlobUrl: string | null = null;
+
 async function handleCutOpenFile() {
   const { open } = await import("@tauri-apps/plugin-dialog");
 
@@ -831,14 +859,34 @@ async function handleCutOpenFile() {
   cutFileLabel.textContent = fileName;
   cutOpenBtn.classList.add("has-file");
 
-  // Hide previous status
+  // Hide previous sections, show skeleton
+  cutPreviewSection.classList.add("hidden");
+  cutActionSection.classList.add("hidden");
   cutStatusSection.classList.add("hidden");
   cutProgressSection.classList.add("hidden");
+  cutSkeletonSection.classList.remove("hidden");
   resizeWindowToContent();
 
-  // Load video preview
-  const assetUrl = convertFileSrc(selected);
-  cutVideo.src = assetUrl;
+  // Revoke previous blob URL
+  if (cutBlobUrl) {
+    URL.revokeObjectURL(cutBlobUrl);
+    cutBlobUrl = null;
+  }
+
+  // Load video preview by reading file bytes and creating a blob URL.
+  // The Tauri asset protocol (http://asset.localhost) is rejected by WebView2's
+  // media element URL safety check on Windows production builds.
+  const { readFile } = await import("@tauri-apps/plugin-fs");
+  const bytes = await readFile(selected);
+  const ext = selected.split(".").pop()?.toLowerCase() || "";
+  const mimeMap: Record<string, string> = {
+    mp4: "video/mp4", mkv: "video/x-matroska", avi: "video/x-msvideo",
+    mov: "video/quicktime", webm: "video/webm", flv: "video/x-flv",
+    wmv: "video/x-ms-wmv", m4v: "video/x-m4v",
+  };
+  const blob = new Blob([bytes], { type: mimeMap[ext] || "video/mp4" });
+  cutBlobUrl = URL.createObjectURL(blob);
+  cutVideo.src = cutBlobUrl;
   cutVideo.load();
 }
 
@@ -856,7 +904,8 @@ function handleCutVideoLoaded() {
   cutVideo.currentTime = 0;
   updatePlayheadPosition(cutSliderStartPercent);
 
-  // Show sections
+  // Hide skeleton, show actual sections
+  cutSkeletonSection.classList.add("hidden");
   cutPreviewSection.classList.remove("hidden");
   cutActionSection.classList.remove("hidden");
   resizeWindowToContent();
@@ -1109,6 +1158,15 @@ async function initCutTab() {
   // Video events
   cutVideo.addEventListener("loadedmetadata", handleCutVideoLoaded);
   cutVideo.addEventListener("timeupdate", handleCutTimeUpdate);
+  cutVideo.addEventListener("error", () => {
+    const err = cutVideo.error;
+    const msg = err ? `Video error: ${err.message}` : "Failed to load video";
+    console.error(msg, "src:", cutVideo.src);
+    cutSkeletonSection.classList.add("hidden");
+    cutFileLabel.textContent = msg;
+    cutOpenBtn.classList.remove("has-file");
+    resizeWindowToContent();
+  });
   cutVideo.addEventListener("click", toggleCutPlayback);
   cutVideo.addEventListener("pause", updateCutPlayButton);
   cutVideo.addEventListener("play", updateCutPlayButton);

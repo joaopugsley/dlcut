@@ -189,6 +189,23 @@
           </div>
         </section>
 
+        <!-- Video Loading Skeleton -->
+        <section id="cut-skeleton-section" class="section hidden">
+          <div class="cut-video-container">
+            <div class="cut-video-skeleton skeleton"></div>
+          </div>
+          <div class="cut-skeleton-timeline skeleton"></div>
+          <div class="cut-skeleton-labels">
+            <div class="skeleton cut-skeleton-label"></div>
+            <div class="skeleton cut-skeleton-label"></div>
+          </div>
+          <div class="cut-skeleton-transport">
+            <div class="skeleton cut-skeleton-btn"></div>
+            <div class="skeleton cut-skeleton-btn cut-skeleton-btn-play"></div>
+            <div class="skeleton cut-skeleton-btn"></div>
+          </div>
+        </section>
+
         <!-- Video Preview -->
         <section id="cut-preview-section" class="section hidden">
           <div class="cut-video-container">
@@ -277,7 +294,10 @@
 
       <!-- Footer -->
       <footer class="app-footer">
-        <span id="app-version" class="version"></span>
+        <span class="version-row">
+          <span id="app-version" class="version"></span>
+          <a id="update-link" class="update-link hidden" href="#"></a>
+        </span>
         <div class="credits">
           <a id="credits-twitter" href="#" class="credits-link">twitter</a>
           <a id="credits-github" href="#" class="credits-link">github</a>
