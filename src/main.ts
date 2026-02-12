@@ -339,7 +339,7 @@ function handleUrlInput() {
 }
 
 // Handle paste event - fetch immediately
-function handleUrlPaste(event: ClipboardEvent) {
+function handleUrlPaste() {
   // Let the paste complete first
   setTimeout(() => {
     const url = urlInput.value.trim();
@@ -757,8 +757,8 @@ const cutFileLabel = document.getElementById("cut-file-label") as HTMLSpanElemen
 const cutPreviewSection = document.getElementById("cut-preview-section") as HTMLElement;
 const cutVideo = document.getElementById("cut-video") as HTMLVideoElement;
 const cutPlayBtn = document.getElementById("cut-play-btn") as HTMLButtonElement;
-const cutPlayIcon = document.getElementById("cut-play-icon") as SVGElement;
-const cutPauseIcon = document.getElementById("cut-pause-icon") as SVGElement;
+const cutPlayIcon = document.getElementById("cut-play-icon") as unknown as SVGElement;
+const cutPauseIcon = document.getElementById("cut-pause-icon") as unknown as SVGElement;
 const cutCurrentTime = document.getElementById("cut-current-time") as HTMLSpanElement;
 const cutTotalTime = document.getElementById("cut-total-time") as HTMLSpanElement;
 const cutTimeline = document.getElementById("cut-timeline") as HTMLElement;
@@ -824,13 +824,10 @@ async function handleCutOpenFile() {
 
   if (!selected) return;
 
-  const filePath = typeof selected === "string" ? selected : selected.path;
-  if (!filePath) return;
-
-  cutFilePath = filePath;
+  cutFilePath = selected;
 
   // Update UI
-  const fileName = filePath.split(/[\\/]/).pop() || filePath;
+  const fileName = selected.split(/[\\/]/).pop() || selected;
   cutFileLabel.textContent = fileName;
   cutOpenBtn.classList.add("has-file");
 
@@ -840,7 +837,7 @@ async function handleCutOpenFile() {
   resizeWindowToContent();
 
   // Load video preview
-  const assetUrl = convertFileSrc(filePath);
+  const assetUrl = convertFileSrc(selected);
   cutVideo.src = assetUrl;
   cutVideo.load();
 }
