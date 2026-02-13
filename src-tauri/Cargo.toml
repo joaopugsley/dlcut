@@ -1,6 +1,6 @@
 [package]
 name = "dlcut"
-version = "1.1.0"
+version = "1.1.1"
 description = "A simple, elegant YouTube video downloader and cutter"
 authors = ["DLCut"]
 edition = "2021"
