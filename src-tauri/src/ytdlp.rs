@@ -39,6 +39,7 @@ struct RawFormat {
     format_note: Option<String>,
     height: Option<u32>,
     width: Option<u32>,
+    tbr: Option<f64>,
 }
 
 /// Raw video info from yt-dlp JSON output
@@ -94,15 +95,11 @@ pub fn validate_url(url: &str) -> Result<Platform> {
             Platform::TikTok,
         ),
         (
-            &[
-                r"^https?://(www\.)?instagram\.com/(p|reel|reels|tv)/[\w-]+",
-            ],
+            &[r"^https?://(www\.)?instagram\.com/(p|reel|reels|tv)/[\w-]+"],
             Platform::Instagram,
         ),
         (
-            &[
-                r"^https?://(www\.)?(twitter\.com|x\.com)/[\w]+/status/\d+",
-            ],
+            &[r"^https?://(www\.)?(twitter\.com|x\.com)/[\w]+/status/\d+"],
             Platform::Twitter,
         ),
         (
@@ -113,9 +110,7 @@ pub fn validate_url(url: &str) -> Result<Platform> {
             Platform::Reddit,
         ),
         (
-            &[
-                r"^https?://(www\.)?soundcloud\.com/[\w-]+/[\w-]+",
-            ],
+            &[r"^https?://(www\.)?soundcloud\.com/[\w-]+/[\w-]+"],
             Platform::SoundCloud,
         ),
     ];
@@ -180,8 +175,10 @@ pub async fn fetch_video_info(url: &str) -> Result<VideoInfo> {
     // Filter to only useful formats (video with audio, or best quality options)
     let formats = filter_formats(formats);
 
+    let duration = raw.duration.unwrap_or(0.0);
+
     // Extract video qualities (unique heights from video formats)
-    let mut video_qualities = extract_video_qualities(&raw_formats);
+    let mut video_qualities = extract_video_qualities(&raw_formats, duration);
 
     // If no specific video qualities found but platform supports video, add "Best available"
     if video_qualities.is_empty() && platform.supports_video() {
@@ -193,25 +190,32 @@ pub async fn fetch_video_info(url: &str) -> Result<VideoInfo> {
     }
 
     // Audio qualities are fixed options since yt-dlp will select best available
+    // Estimate file size from target bitrate * duration
+    let audio_size_label = |kbps: u32| -> String {
+        if duration > 0.0 {
+            let bytes = (kbps as f64 * 1000.0 / 8.0 * duration) as u64;
+            format!(" • ~{}", format_bytes(bytes))
+        } else {
+            String::new()
+        }
+    };
     let audio_qualities = vec![
         AudioQuality {
             quality_id: "high".to_string(),
-            label: "High Quality (320kbps)".to_string(),
+            label: format!("High Quality (320kbps){}", audio_size_label(320)),
             bitrate: 320,
         },
         AudioQuality {
             quality_id: "medium".to_string(),
-            label: "Medium Quality (192kbps)".to_string(),
+            label: format!("Medium Quality (192kbps){}", audio_size_label(192)),
             bitrate: 192,
         },
         AudioQuality {
             quality_id: "low".to_string(),
-            label: "Low Quality (128kbps)".to_string(),
+            label: format!("Low Quality (128kbps){}", audio_size_label(128)),
             bitrate: 128,
         },
     ];
-
-    let duration = raw.duration.unwrap_or(0.0);
 
     Ok(VideoInfo {
         id: raw.id,
@@ -272,35 +276,61 @@ fn convert_format(raw: &RawFormat) -> Option<VideoFormat> {
 }
 
 /// Extract unique video quality options from raw formats
-fn extract_video_qualities(raw_formats: &[RawFormat]) -> Vec<VideoQuality> {
-    use std::collections::HashSet;
+fn extract_video_qualities(raw_formats: &[RawFormat], duration: f64) -> Vec<VideoQuality> {
+    use std::collections::HashMap;
 
-    let mut seen_heights = HashSet::new();
-    let mut qualities = Vec::new();
+    // Find the best audio stream's bitrate to add to video size estimates
+    let best_audio_tbr = raw_formats
+        .iter()
+        .filter(|f| {
+            f.acodec.as_ref().map(|a| a != "none").unwrap_or(false)
+                && f.vcodec.as_ref().map(|v| v == "none").unwrap_or(true)
+        })
+        .filter_map(|f| f.tbr)
+        .fold(0.0_f64, f64::max);
 
-    // Collect all video formats with heights
-    let mut video_formats: Vec<_> = raw_formats
+    // For each height, find the lowest tbr (yt-dlp prefers efficient codecs like vp9)
+    let mut best_per_height: HashMap<u32, &RawFormat> = HashMap::new();
+
+    for format in raw_formats
         .iter()
         .filter(|f| f.vcodec.as_ref().map(|v| v != "none").unwrap_or(false) && f.height.is_some())
-        .collect();
-
-    // Sort by height descending
-    video_formats.sort_by(|a, b| b.height.cmp(&a.height));
-
-    for format in video_formats {
-        if let Some(height) = format.height {
-            if !seen_heights.contains(&height) {
-                seen_heights.insert(height);
-
-                let filesize_approx = format.filesize.or(format.filesize_approx).map(format_bytes);
-
-                qualities.push(VideoQuality {
-                    height,
-                    label: format!("{}p", height),
-                    filesize_approx,
-                });
+    {
+        let height = format.height.unwrap();
+        let entry = best_per_height.entry(height).or_insert(format);
+        // Prefer the format with the lower tbr (more efficient codec = closer to actual download)
+        if let (Some(new_tbr), Some(old_tbr)) = (format.tbr, entry.tbr) {
+            if new_tbr < old_tbr {
+                *entry = format;
             }
         }
+    }
+
+    // Sort by height descending
+    let mut heights: Vec<u32> = best_per_height.keys().copied().collect();
+    heights.sort_unstable_by(|a, b| b.cmp(a));
+
+    let mut qualities = Vec::new();
+    for height in heights {
+        let format = best_per_height[&height];
+
+        // Use filesize if available, otherwise estimate from bitrate * duration
+        let filesize_approx = format
+            .filesize
+            .or(format.filesize_approx)
+            .or_else(|| {
+                let video_tbr = format.tbr?;
+                let total_tbr = video_tbr + best_audio_tbr;
+                // tbr is in kbps: size = tbr * 1000 / 8 * duration
+                Some((total_tbr * 1000.0 / 8.0 * duration) as u64)
+            })
+            .map(format_bytes);
+
+        qualities.push(VideoQuality {
+            height,
+            label: format!("{}p", height),
+            filesize_approx,
+        });
     }
 
     // Limit to common resolutions
@@ -581,31 +611,76 @@ mod tests {
         use crate::types::Platform;
 
         // YouTube
-        assert_eq!(validate_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ").unwrap(), Platform::YouTube);
-        assert_eq!(validate_url("https://youtube.com/watch?v=dQw4w9WgXcQ").unwrap(), Platform::YouTube);
-        assert_eq!(validate_url("https://youtu.be/dQw4w9WgXcQ").unwrap(), Platform::YouTube);
-        assert_eq!(validate_url("https://www.youtube.com/shorts/abc123").unwrap(), Platform::YouTube);
+        assert_eq!(
+            validate_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ").unwrap(),
+            Platform::YouTube
+        );
+        assert_eq!(
+            validate_url("https://youtube.com/watch?v=dQw4w9WgXcQ").unwrap(),
+            Platform::YouTube
+        );
+        assert_eq!(
+            validate_url("https://youtu.be/dQw4w9WgXcQ").unwrap(),
+            Platform::YouTube
+        );
+        assert_eq!(
+            validate_url("https://www.youtube.com/shorts/abc123").unwrap(),
+            Platform::YouTube
+        );
 
         // TikTok
-        assert_eq!(validate_url("https://www.tiktok.com/@user/video/1234567890").unwrap(), Platform::TikTok);
-        assert_eq!(validate_url("https://vm.tiktok.com/ZMx123abc").unwrap(), Platform::TikTok);
+        assert_eq!(
+            validate_url("https://www.tiktok.com/@user/video/1234567890").unwrap(),
+            Platform::TikTok
+        );
+        assert_eq!(
+            validate_url("https://vm.tiktok.com/ZMx123abc").unwrap(),
+            Platform::TikTok
+        );
 
         // Instagram
-        assert_eq!(validate_url("https://www.instagram.com/p/ABC123").unwrap(), Platform::Instagram);
-        assert_eq!(validate_url("https://www.instagram.com/reel/ABC123").unwrap(), Platform::Instagram);
-        assert_eq!(validate_url("https://www.instagram.com/reels/ABC123").unwrap(), Platform::Instagram);
-        assert_eq!(validate_url("https://www.instagram.com/tv/ABC123").unwrap(), Platform::Instagram);
+        assert_eq!(
+            validate_url("https://www.instagram.com/p/ABC123").unwrap(),
+            Platform::Instagram
+        );
+        assert_eq!(
+            validate_url("https://www.instagram.com/reel/ABC123").unwrap(),
+            Platform::Instagram
+        );
+        assert_eq!(
+            validate_url("https://www.instagram.com/reels/ABC123").unwrap(),
+            Platform::Instagram
+        );
+        assert_eq!(
+            validate_url("https://www.instagram.com/tv/ABC123").unwrap(),
+            Platform::Instagram
+        );
 
         // Twitter/X
-        assert_eq!(validate_url("https://twitter.com/user/status/1234567890").unwrap(), Platform::Twitter);
-        assert_eq!(validate_url("https://x.com/user/status/1234567890").unwrap(), Platform::Twitter);
+        assert_eq!(
+            validate_url("https://twitter.com/user/status/1234567890").unwrap(),
+            Platform::Twitter
+        );
+        assert_eq!(
+            validate_url("https://x.com/user/status/1234567890").unwrap(),
+            Platform::Twitter
+        );
 
         // Reddit
-        assert_eq!(validate_url("https://www.reddit.com/r/sub/comments/abc123").unwrap(), Platform::Reddit);
-        assert_eq!(validate_url("https://v.redd.it/abc123").unwrap(), Platform::Reddit);
+        assert_eq!(
+            validate_url("https://www.reddit.com/r/sub/comments/abc123").unwrap(),
+            Platform::Reddit
+        );
+        assert_eq!(
+            validate_url("https://v.redd.it/abc123").unwrap(),
+            Platform::Reddit
+        );
 
         // SoundCloud
-        assert_eq!(validate_url("https://soundcloud.com/artist/track-name").unwrap(), Platform::SoundCloud);
+        assert_eq!(
+            validate_url("https://soundcloud.com/artist/track-name").unwrap(),
+            Platform::SoundCloud
+        );
 
         // Invalid URLs
         assert!(validate_url("https://example.com").is_err());
