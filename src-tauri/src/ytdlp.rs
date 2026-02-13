@@ -6,8 +6,8 @@
 use crate::deps;
 use crate::error::{AppError, Result};
 use crate::types::{
-    format_bytes, format_duration, AudioQuality, DownloadMode, ProgressStage, ProgressUpdate,
-    VideoFormat, VideoInfo, VideoQuality,
+    format_bytes, format_duration, AudioQuality, DownloadMode, Platform, ProgressStage,
+    ProgressUpdate, VideoFormat, VideoInfo, VideoQuality,
 };
 use regex::Regex;
 use serde::Deserialize;
@@ -70,24 +70,62 @@ pub async fn check_ytdlp() -> Result<()> {
     }
 }
 
-/// Validate that a URL looks like a YouTube URL
+/// Validate that a URL is from a supported platform and return which platform it matches
 /// This is a security measure to prevent arbitrary URL processing
-pub fn validate_youtube_url(url: &str) -> Result<()> {
+pub fn validate_url(url: &str) -> Result<Platform> {
     let url = url.trim();
 
-    // Basic URL patterns for YouTube
-    let patterns = [
-        r"^https?://(www\.)?youtube\.com/watch\?v=[\w-]+",
-        r"^https?://(www\.)?youtube\.com/shorts/[\w-]+",
-        r"^https?://youtu\.be/[\w-]+",
-        r"^https?://(www\.)?youtube\.com/embed/[\w-]+",
-        r"^https?://m\.youtube\.com/watch\?v=[\w-]+",
+    let platform_patterns: &[(&[&str], Platform)] = &[
+        (
+            &[
+                r"^https?://(www\.)?youtube\.com/watch\?v=[\w-]+",
+                r"^https?://(www\.)?youtube\.com/shorts/[\w-]+",
+                r"^https?://youtu\.be/[\w-]+",
+                r"^https?://(www\.)?youtube\.com/embed/[\w-]+",
+                r"^https?://m\.youtube\.com/watch\?v=[\w-]+",
+            ],
+            Platform::YouTube,
+        ),
+        (
+            &[
+                r"^https?://(www\.)?tiktok\.com/@[\w.-]+/video/\d+",
+                r"^https?://vm\.tiktok\.com/[\w-]+",
+            ],
+            Platform::TikTok,
+        ),
+        (
+            &[
+                r"^https?://(www\.)?instagram\.com/(p|reel|reels|tv)/[\w-]+",
+            ],
+            Platform::Instagram,
+        ),
+        (
+            &[
+                r"^https?://(www\.)?(twitter\.com|x\.com)/[\w]+/status/\d+",
+            ],
+            Platform::Twitter,
+        ),
+        (
+            &[
+                r"^https?://(www\.)?reddit\.com/r/[\w]+/comments/[\w]+",
+                r"^https?://v\.redd\.it/[\w]+",
+            ],
+            Platform::Reddit,
+        ),
+        (
+            &[
+                r"^https?://(www\.)?soundcloud\.com/[\w-]+/[\w-]+",
+            ],
+            Platform::SoundCloud,
+        ),
     ];
 
-    for pattern in &patterns {
-        let re = Regex::new(pattern).unwrap();
-        if re.is_match(url) {
-            return Ok(());
+    for (patterns, platform) in platform_patterns {
+        for pattern in *patterns {
+            let re = Regex::new(pattern).unwrap();
+            if re.is_match(url) {
+                return Ok(platform.clone());
+            }
         }
     }
 
@@ -96,7 +134,7 @@ pub fn validate_youtube_url(url: &str) -> Result<()> {
 
 /// Fetch video information using yt-dlp
 pub async fn fetch_video_info(url: &str) -> Result<VideoInfo> {
-    validate_youtube_url(url)?;
+    let platform = validate_url(url)?;
 
     // Use yt-dlp to get JSON metadata
     // Arguments are passed as separate strings to prevent shell injection
@@ -143,7 +181,16 @@ pub async fn fetch_video_info(url: &str) -> Result<VideoInfo> {
     let formats = filter_formats(formats);
 
     // Extract video qualities (unique heights from video formats)
-    let video_qualities = extract_video_qualities(&raw_formats);
+    let mut video_qualities = extract_video_qualities(&raw_formats);
+
+    // If no specific video qualities found but platform supports video, add "Best available"
+    if video_qualities.is_empty() && platform.supports_video() {
+        video_qualities.push(VideoQuality {
+            height: 0,
+            label: "Best available".to_string(),
+            filesize_approx: None,
+        });
+    }
 
     // Audio qualities are fixed options since yt-dlp will select best available
     let audio_qualities = vec![
@@ -176,6 +223,7 @@ pub async fn fetch_video_info(url: &str) -> Result<VideoInfo> {
         formats,
         video_qualities,
         audio_qualities,
+        platform,
     })
 }
 
@@ -300,7 +348,7 @@ pub async fn download_video(
     end_time: Option<f64>,
     progress_tx: mpsc::Sender<ProgressUpdate>,
 ) -> Result<String> {
-    validate_youtube_url(url)?;
+    validate_url(url)?;
 
     let mut args = vec![
         "--newline".to_string(), // Progress on new lines
@@ -312,13 +360,16 @@ pub async fn download_video(
     match mode {
         DownloadMode::VideoWithAudio => {
             // For video+audio: select best video up to specified height + best audio, merge
-            // Format: bestvideo[height<=X]+bestaudio/best[height<=X]
-            // The fallback handles cases where separate streams aren't available
-            let height: u32 = quality.parse().unwrap_or(1080);
-            let format_str = format!(
-                "bestvideo[height<={}]+bestaudio/best[height<={}]",
-                height, height
-            );
+            // Height of 0 means "best available" (no height filter)
+            let height: u32 = quality.parse().unwrap_or(0);
+            let format_str = if height == 0 {
+                "bestvideo+bestaudio/best".to_string()
+            } else {
+                format!(
+                    "bestvideo[height<={}]+bestaudio/best[height<={}]",
+                    height, height
+                )
+            };
             args.push("-f".to_string());
             args.push(format_str);
 
@@ -480,18 +531,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_validate_youtube_url() {
-        // Valid URLs
-        assert!(validate_youtube_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ").is_ok());
-        assert!(validate_youtube_url("https://youtube.com/watch?v=dQw4w9WgXcQ").is_ok());
-        assert!(validate_youtube_url("https://youtu.be/dQw4w9WgXcQ").is_ok());
-        assert!(validate_youtube_url("https://www.youtube.com/shorts/abc123").is_ok());
+    fn test_validate_url() {
+        use crate::types::Platform;
+
+        // YouTube
+        assert_eq!(validate_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ").unwrap(), Platform::YouTube);
+        assert_eq!(validate_url("https://youtube.com/watch?v=dQw4w9WgXcQ").unwrap(), Platform::YouTube);
+        assert_eq!(validate_url("https://youtu.be/dQw4w9WgXcQ").unwrap(), Platform::YouTube);
+        assert_eq!(validate_url("https://www.youtube.com/shorts/abc123").unwrap(), Platform::YouTube);
+
+        // TikTok
+        assert_eq!(validate_url("https://www.tiktok.com/@user/video/1234567890").unwrap(), Platform::TikTok);
+        assert_eq!(validate_url("https://vm.tiktok.com/ZMx123abc").unwrap(), Platform::TikTok);
+
+        // Instagram
+        assert_eq!(validate_url("https://www.instagram.com/p/ABC123").unwrap(), Platform::Instagram);
+        assert_eq!(validate_url("https://www.instagram.com/reel/ABC123").unwrap(), Platform::Instagram);
+        assert_eq!(validate_url("https://www.instagram.com/reels/ABC123").unwrap(), Platform::Instagram);
+        assert_eq!(validate_url("https://www.instagram.com/tv/ABC123").unwrap(), Platform::Instagram);
+
+        // Twitter/X
+        assert_eq!(validate_url("https://twitter.com/user/status/1234567890").unwrap(), Platform::Twitter);
+        assert_eq!(validate_url("https://x.com/user/status/1234567890").unwrap(), Platform::Twitter);
+
+        // Reddit
+        assert_eq!(validate_url("https://www.reddit.com/r/sub/comments/abc123").unwrap(), Platform::Reddit);
+        assert_eq!(validate_url("https://v.redd.it/abc123").unwrap(), Platform::Reddit);
+
+        // SoundCloud
+        assert_eq!(validate_url("https://soundcloud.com/artist/track-name").unwrap(), Platform::SoundCloud);
 
         // Invalid URLs
-        assert!(validate_youtube_url("https://example.com").is_err());
-        assert!(validate_youtube_url("not a url").is_err());
-        assert!(validate_youtube_url("").is_err());
-        assert!(validate_youtube_url("https://vimeo.com/123456").is_err());
+        assert!(validate_url("https://example.com").is_err());
+        assert!(validate_url("not a url").is_err());
+        assert!(validate_url("").is_err());
+        assert!(validate_url("https://vimeo.com/123456").is_err());
     }
 
     #[test]

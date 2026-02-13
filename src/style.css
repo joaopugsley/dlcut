@@ -318,6 +318,12 @@ body {
   background-color: rgba(37, 99, 235, 0.05);
 }
 
+.mode-btn.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
 @media (prefers-color-scheme: dark) {
   .mode-btn.active {
     background-color: rgba(59, 130, 246, 0.1);
@@ -388,6 +394,20 @@ body {
   font-size: 13px;
   color: var(--color-text-muted);
   font-family: var(--font-mono);
+}
+
+/* Platform Badge */
+.platform-badge {
+  display: inline-block;
+  width: fit-content;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 0 6px;
+  border-radius: 8px;
+  color: var(--color-text-secondary);
+  background-color: var(--color-border);
+  margin-top: var(--space-xs);
+  line-height: 1.6;
 }
 
 /* Cut Inputs */

@@ -123,6 +123,8 @@ interface AudioQuality {
 
 type DownloadMode = "video_with_audio" | "audio_only";
 
+type Platform = "youtube" | "tiktok" | "instagram" | "twitter" | "reddit" | "soundcloud";
+
 interface VideoInfo {
   id: string;
   title: string;
@@ -133,6 +135,7 @@ interface VideoInfo {
   formats: VideoFormat[];
   video_qualities: VideoQuality[];
   audio_qualities: AudioQuality[];
+  platform: Platform;
 }
 
 interface ProgressUpdate {
@@ -194,6 +197,7 @@ const statusSection = document.getElementById("status-section") as HTMLElement;
 const statusMessage = document.getElementById("status-message") as HTMLDivElement;
 const statusText = document.getElementById("status-text") as HTMLSpanElement;
 const openFolderBtn = document.getElementById("open-folder-btn") as HTMLButtonElement;
+const platformBadge = document.getElementById("platform-badge") as HTMLSpanElement;
 const appFooter = document.querySelector(".app-footer") as HTMLElement;
 
 // State
@@ -356,7 +360,7 @@ function handleUrlInput() {
 
   // Wait for user to stop typing
   fetchTimeout = window.setTimeout(() => {
-    if (isYouTubeUrl(url)) {
+    if (isSupportedUrl(url)) {
       fetchVideoInfo(url);
     }
   }, 500);
@@ -367,20 +371,41 @@ function handleUrlPaste() {
   // Let the paste complete first
   setTimeout(() => {
     const url = urlInput.value.trim();
-    if (isYouTubeUrl(url)) {
+    if (isSupportedUrl(url)) {
       if (fetchTimeout) clearTimeout(fetchTimeout);
       fetchVideoInfo(url);
     }
   }, 0);
 }
 
-// Basic YouTube URL validation (detailed validation happens on backend)
-function isYouTubeUrl(url: string): boolean {
+// Basic supported URL validation (detailed validation happens on backend)
+function isSupportedUrl(url: string): boolean {
   return (
     url.includes("youtube.com/watch") ||
     url.includes("youtu.be/") ||
-    url.includes("youtube.com/shorts/")
+    url.includes("youtube.com/shorts/") ||
+    url.includes("youtube.com/embed/") ||
+    url.includes("m.youtube.com/watch") ||
+    url.includes("tiktok.com/") ||
+    url.includes("instagram.com/") ||
+    url.includes("twitter.com/") ||
+    url.includes("x.com/") ||
+    url.includes("reddit.com/") ||
+    url.includes("v.redd.it/") ||
+    url.includes("soundcloud.com/")
   );
+}
+
+function platformDisplayName(platform: Platform): string {
+  const names: Record<Platform, string> = {
+    youtube: "YouTube",
+    tiktok: "TikTok",
+    instagram: "Instagram",
+    twitter: "X / Twitter",
+    reddit: "Reddit",
+    soundcloud: "SoundCloud",
+  };
+  return names[platform];
 }
 
 // Fetch video information
@@ -403,19 +428,38 @@ async function fetchVideoInfo(url: string) {
 
 // Display video information
 function displayVideoInfo(info: VideoInfo) {
-  // Thumbnail
+  // Thumbnail - try loading, fall back to hidden on error (e.g. Instagram CDN requires auth)
   if (info.thumbnail) {
+    thumbnail.onerror = () => {
+      thumbnail.style.display = "none";
+    };
+    thumbnail.onload = () => {
+      thumbnail.style.display = "";
+    };
     thumbnail.src = info.thumbnail;
     thumbnail.alt = info.title;
   } else {
-    thumbnail.src = "";
-    thumbnail.alt = "No thumbnail";
+    thumbnail.style.display = "none";
   }
 
   // Details
   videoTitle.textContent = info.title;
   videoUploader.textContent = info.uploader || "Unknown uploader";
   videoDuration.textContent = info.duration_string;
+
+  // Platform badge
+  platformBadge.textContent = platformDisplayName(info.platform);
+  platformBadge.className = "platform-badge";
+
+  // SoundCloud: disable video mode, force audio only
+  if (info.platform === "soundcloud") {
+    modeVideoBtn.classList.add("disabled");
+    modeVideoBtn.disabled = true;
+    handleModeChange("audio_only");
+  } else {
+    modeVideoBtn.classList.remove("disabled");
+    modeVideoBtn.disabled = false;
+  }
 
   // Initialize slider with video duration
   resetSlider();
@@ -425,9 +469,19 @@ function displayVideoInfo(info: VideoInfo) {
 
   // Show sections
   show(videoInfoSection);
-  show(cutSection);
+
+  // Hide cut section if duration is 0 (e.g. live streams or unknown duration)
+  if (info.duration > 0) {
+    show(cutSection);
+  }
+
   show(modeSection);
   show(qualitySection);
+
+  // If only one quality option, hide the quality selector
+  if (qualitySelect.options.length <= 1 && qualitySelect.options.length > 0) {
+    hide(qualitySection);
+  }
 }
 
 // Handle mode change (video+audio or audio only)
@@ -727,8 +781,14 @@ function resetUI() {
   progressSection.classList.add("hidden");
   statusSection.classList.add("hidden");
   openFolderBtn.classList.add("hidden");
+  platformBadge.classList.add("hidden");
+  platformBadge.className = "platform-badge hidden";
+  modeVideoBtn.classList.remove("disabled");
+  modeVideoBtn.disabled = false;
   urlError.classList.add("hidden");
   cutError.classList.add("hidden");
+  thumbnail.style.display = "";
+  thumbnail.src = "";
   qualitySelect.innerHTML = '<option value="">Select quality...</option>';
   modeVideoBtn.classList.add("active");
   modeAudioBtn.classList.remove("active");

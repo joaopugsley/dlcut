@@ -50,7 +50,7 @@ pub async fn install_dependencies(app: AppHandle) -> Result<()> {
     Ok(())
 }
 
-/// Fetch video information from a YouTube URL
+/// Fetch video information from a supported URL
 #[tauri::command]
 pub async fn fetch_video_info(url: String, app: AppHandle) -> Result<VideoInfo> {
     // Emit fetching status
@@ -142,7 +142,7 @@ pub async fn start_download(
     app: AppHandle,
 ) -> Result<()> {
     // Validate URL
-    ytdlp::validate_youtube_url(&request.url)?;
+    ytdlp::validate_url(&request.url)?;
 
     // Check if there's already an active download
     {

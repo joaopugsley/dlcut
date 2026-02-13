@@ -8,7 +8,7 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AppError {
-    #[error("Invalid YouTube URL")]
+    #[error("Unsupported or invalid URL")]
     InvalidUrl,
 
     #[error("Failed to fetch video information: {0}")]

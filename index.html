@@ -49,12 +49,12 @@
 
       <!-- URL Input -->
       <section id="url-section" class="section">
-        <label for="url-input" class="label">YouTube URL</label>
+        <label for="url-input" class="label">Video URL</label>
         <input
           type="text"
           id="url-input"
           class="input"
-          placeholder="https://www.youtube.com/watch?v=..."
+          placeholder="Paste a video URL..."
           autocomplete="off"
           spellcheck="false"
         />
@@ -76,11 +76,12 @@
       <!-- Video Info (hidden until loaded) -->
       <section id="video-info" class="section hidden">
         <div class="video-header">
-          <img id="thumbnail" class="thumbnail" alt="Video thumbnail" />
+          <img id="thumbnail" class="thumbnail" alt="Video thumbnail" referrerpolicy="no-referrer" />
           <div class="video-details">
             <h2 id="video-title" class="video-title"></h2>
             <p id="video-uploader" class="video-uploader"></p>
             <p id="video-duration" class="video-duration"></p>
+            <span id="platform-badge" class="platform-badge hidden"></span>
           </div>
         </div>
       </section>

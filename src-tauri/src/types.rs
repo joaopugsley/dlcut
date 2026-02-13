@@ -5,6 +5,30 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Supported platform detected from URL
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum Platform {
+    #[serde(rename = "youtube")]
+    YouTube,
+    #[serde(rename = "tiktok")]
+    TikTok,
+    #[serde(rename = "instagram")]
+    Instagram,
+    #[serde(rename = "twitter")]
+    Twitter,
+    #[serde(rename = "reddit")]
+    Reddit,
+    #[serde(rename = "soundcloud")]
+    SoundCloud,
+}
+
+impl Platform {
+    /// Whether the platform supports video downloads
+    pub fn supports_video(&self) -> bool {
+        !matches!(self, Platform::SoundCloud)
+    }
+}
+
 /// Download mode - video with audio or audio only
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -75,6 +99,8 @@ pub struct VideoInfo {
     pub video_qualities: Vec<VideoQuality>,
     /// Available audio quality options
     pub audio_qualities: Vec<AudioQuality>,
+    /// Detected platform
+    pub platform: Platform,
 }
 
 /// Download request from frontend
