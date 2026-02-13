@@ -261,9 +261,10 @@ pub async fn show_in_folder(path: String) -> Result<()> {
 
     #[cfg(target_os = "windows")]
     {
-        // explorer returns exit code 1 even on success, so just check it ran
-        tokio::process::Command::new("explorer")
-            .arg(format!("/select,{}", path))
+        // Use cmd /C to avoid Rust's automatic argument quoting which breaks
+        // explorer's special /select, syntax when paths contain spaces
+        tokio::process::Command::new("cmd")
+            .args(["/C", &format!("explorer /select,\"{}\"", path)])
             .creation_flags(0x08000000)
             .output()
             .await
