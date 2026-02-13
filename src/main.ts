@@ -957,8 +957,25 @@ function updateCutPlayButton() {
 }
 
 // Cut slider functions
+// Check if a screen X coordinate is close to a trim handle; returns which one (or null)
+function getNearTrimHandle(clientX: number): "start" | "end" | null {
+  const THRESHOLD = 12; // px
+  const startRect = cutTrimStart.getBoundingClientRect();
+  const endRect = cutTrimEnd.getBoundingClientRect();
+  const distStart = Math.abs(clientX - (startRect.left + startRect.width / 2));
+  const distEnd = Math.abs(clientX - (endRect.left + endRect.width / 2));
+  // If both are within threshold, pick the closer one
+  if (distStart <= THRESHOLD && distEnd <= THRESHOLD) {
+    return distStart <= distEnd ? "start" : "end";
+  }
+  if (distStart <= THRESHOLD) return "start";
+  if (distEnd <= THRESHOLD) return "end";
+  return null;
+}
+
 function startCutDrag(e: MouseEvent | TouchEvent, handle: "start" | "end") {
   e.preventDefault();
+  e.stopPropagation();
   cutActiveHandle = handle;
 }
 
@@ -1202,17 +1219,16 @@ async function initCutTab() {
   document.addEventListener("touchmove", onCutDrag, { passive: false });
   document.addEventListener("touchend", stopCutDrag);
 
-  // Playhead drag
-  cutPlayhead.addEventListener("mousedown", (e) => {
+  // Playhead drag — but prioritize trim handles when overlapping
+  function playheadMouseDown(e: MouseEvent | TouchEvent) {
     e.preventDefault();
     e.stopPropagation();
-    cutActiveHandle = "playhead";
-  });
-  cutPlayhead.addEventListener("touchstart", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    cutActiveHandle = "playhead";
-  }, { passive: false });
+    const clientX = e instanceof MouseEvent ? e.clientX : e.touches[0].clientX;
+    const nearHandle = getNearTrimHandle(clientX);
+    cutActiveHandle = nearHandle ?? "playhead";
+  }
+  cutPlayhead.addEventListener("mousedown", playheadMouseDown);
+  cutPlayhead.addEventListener("touchstart", playheadMouseDown, { passive: false });
 
   // Click on timeline to seek (constrained to cut range)
   cutTimeline.addEventListener("mousedown", (e) => {
