@@ -188,8 +188,8 @@ pub async fn start_download(
 
         // Emit final status
         match result {
-            Ok(_) => {
-                let _ = app_clone.emit("download-complete", &output_path);
+            Ok(actual_path) => {
+                let _ = app_clone.emit("download-complete", &actual_path);
             }
             Err(e) => {
                 let _ = app_clone.emit("progress", ProgressUpdate {
@@ -261,13 +261,13 @@ pub async fn show_in_folder(path: String) -> Result<()> {
 
     #[cfg(target_os = "windows")]
     {
-        // Use cmd /C to avoid Rust's automatic argument quoting which breaks
-        // explorer's special /select, syntax when paths contain spaces
-        tokio::process::Command::new("cmd")
-            .args(["/C", &format!("explorer /select,\"{}\"", path)])
+        // Use raw_arg to pass the /select, argument verbatim.
+        // Rust's normal .arg() auto-quotes arguments containing spaces, which
+        // breaks explorer's special /select, syntax.
+        tokio::process::Command::new("explorer")
+            .raw_arg(format!("/select,\"{}\"", path))
             .creation_flags(0x08000000)
-            .output()
-            .await
+            .spawn()
             .map_err(|_| AppError::DownloadError("Failed to open file explorer".to_string()))?;
     }
 

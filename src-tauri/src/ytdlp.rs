@@ -505,6 +505,11 @@ pub async fn download_video(
         return Err(AppError::DownloadError("Download failed".to_string()));
     }
 
+    // Resolve actual output file: yt-dlp may change the extension during
+    // post-processing (e.g. audio extraction, merging). Check the expected
+    // path first, then search the directory for a matching file.
+    let actual_path = resolve_output_path(output_path);
+
     let _ = progress_tx
         .send(ProgressUpdate {
             stage: if needs_postprocess_cut {
@@ -523,7 +528,48 @@ pub async fn download_video(
         })
         .await;
 
-    Ok(output_path.to_string())
+    Ok(actual_path)
+}
+
+/// Resolve the actual output file path after yt-dlp finishes.
+/// yt-dlp may change the extension during post-processing (e.g. .webm -> .mp3),
+/// so the file might not be at the exact path we specified with -o.
+fn resolve_output_path(expected: &str) -> String {
+    use std::path::Path;
+
+    let expected_path = Path::new(expected);
+    if expected_path.exists() {
+        return expected.to_string();
+    }
+
+    // Search for files with the same stem but different extension
+    if let (Some(dir), Some(stem)) = (expected_path.parent(), expected_path.file_stem()) {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            let stem_str = stem.to_string_lossy();
+            // Find the most recently modified file matching the stem
+            let mut best: Option<(std::path::PathBuf, std::time::SystemTime)> = None;
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(file_stem) = path.file_stem() {
+                    if file_stem.to_string_lossy() == stem_str {
+                        if let Ok(meta) = path.metadata() {
+                            if let Ok(modified) = meta.modified() {
+                                if best.as_ref().is_none_or(|(_, t)| modified > *t) {
+                                    best = Some((path, modified));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some((path, _)) = best {
+                return path.to_string_lossy().to_string();
+            }
+        }
+    }
+
+    // Fallback to the expected path
+    expected.to_string()
 }
 
 #[cfg(test)]
