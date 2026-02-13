@@ -804,6 +804,18 @@ body {
   color: var(--color-text);
 }
 
+.cut-file-area.drag-over .cut-open-btn {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background-color: rgba(37, 99, 235, 0.05);
+}
+
+@media (prefers-color-scheme: dark) {
+  .cut-file-area.drag-over .cut-open-btn {
+    background-color: rgba(59, 130, 246, 0.1);
+  }
+}
+
 /* Cut Tab - Video Preview */
 /* Cut Tab - Video Skeleton */
 .cut-video-skeleton {

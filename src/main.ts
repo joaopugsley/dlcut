@@ -838,6 +838,8 @@ function switchTab(tab: "download" | "cut") {
 // Revoke previous blob URL to free memory
 let cutBlobUrl: string | null = null;
 
+const VIDEO_EXTENSIONS = ["mp4", "mkv", "avi", "mov", "webm", "flv", "wmv", "m4v"];
+
 async function handleCutOpenFile() {
   const { open } = await import("@tauri-apps/plugin-dialog");
 
@@ -845,17 +847,20 @@ async function handleCutOpenFile() {
     multiple: false,
     filters: [{
       name: "Video",
-      extensions: ["mp4", "mkv", "avi", "mov", "webm", "flv", "wmv", "m4v"],
+      extensions: VIDEO_EXTENSIONS,
     }],
     title: "Open Video File",
   });
 
   if (!selected) return;
+  await loadCutFile(selected);
+}
 
-  cutFilePath = selected;
+async function loadCutFile(filePath: string) {
+  cutFilePath = filePath;
 
   // Update UI
-  const fileName = selected.split(/[\\/]/).pop() || selected;
+  const fileName = filePath.split(/[\\/]/).pop() || filePath;
   cutFileLabel.textContent = fileName;
   cutOpenBtn.classList.add("has-file");
 
@@ -867,26 +872,17 @@ async function handleCutOpenFile() {
   cutSkeletonSection.classList.remove("hidden");
   resizeWindowToContent();
 
-  // Revoke previous blob URL
+  // Revoke previous blob URL if any
   if (cutBlobUrl) {
     URL.revokeObjectURL(cutBlobUrl);
     cutBlobUrl = null;
   }
 
-  // Load video preview by reading file bytes and creating a blob URL.
-  // The Tauri asset protocol (http://asset.localhost) is rejected by WebView2's
-  // media element URL safety check on Windows production builds.
-  const { readFile } = await import("@tauri-apps/plugin-fs");
-  const bytes = await readFile(selected);
-  const ext = selected.split(".").pop()?.toLowerCase() || "";
-  const mimeMap: Record<string, string> = {
-    mp4: "video/mp4", mkv: "video/x-matroska", avi: "video/x-msvideo",
-    mov: "video/quicktime", webm: "video/webm", flv: "video/x-flv",
-    wmv: "video/x-ms-wmv", m4v: "video/x-m4v",
-  };
-  const blob = new Blob([bytes], { type: mimeMap[ext] || "video/mp4" });
-  cutBlobUrl = URL.createObjectURL(blob);
-  cutVideo.src = cutBlobUrl;
+  // Serve the file via a local HTTP server with range request support.
+  // WebView2 rejects Tauri's asset protocol for <video> elements, and loading
+  // entire files into memory via blob URLs crashes on large videos.
+  const videoUrl = await invoke<string>("serve_local_file", { path: filePath });
+  cutVideo.src = videoUrl;
   cutVideo.load();
 }
 
@@ -1152,8 +1148,30 @@ async function initCutTab() {
   tabBtnDownload.addEventListener("click", () => switchTab("download"));
   tabBtnCut.addEventListener("click", () => switchTab("cut"));
 
-  // File open
+  // File open (button + drag-and-drop)
   cutOpenBtn.addEventListener("click", handleCutOpenFile);
+
+  const cutFileArea = document.getElementById("cut-file-area") as HTMLElement;
+  await appWindow!.onDragDropEvent((event) => {
+    // Only handle drops when cut tab is visible
+    if (tabCut.classList.contains("hidden")) return;
+
+    if (event.payload.type === "over") {
+      cutFileArea.classList.add("drag-over");
+    } else if (event.payload.type === "leave" || event.payload.type === "cancel") {
+      cutFileArea.classList.remove("drag-over");
+    } else if (event.payload.type === "drop") {
+      cutFileArea.classList.remove("drag-over");
+      const paths: string[] = event.payload.paths;
+      const videoFile = paths.find((p) => {
+        const ext = p.split(".").pop()?.toLowerCase() || "";
+        return VIDEO_EXTENSIONS.includes(ext);
+      });
+      if (videoFile) {
+        loadCutFile(videoFile);
+      }
+    }
+  });
 
   // Video events
   cutVideo.addEventListener("loadedmetadata", handleCutVideoLoaded);

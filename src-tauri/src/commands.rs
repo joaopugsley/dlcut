@@ -6,8 +6,10 @@
 use crate::deps::{self, DepsStatus};
 use crate::error::{AppError, Result};
 use crate::ffmpeg;
+use crate::fileserver::FileServer;
 use crate::types::{parse_timestamp, DownloadRequest, ProgressStage, ProgressUpdate, VideoInfo};
 use crate::ytdlp;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
@@ -16,12 +18,15 @@ use tokio::sync::Mutex;
 pub struct AppState {
     /// Currently active download (only one at a time)
     pub active_download: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// Local file server for video preview
+    pub file_server: Mutex<Option<FileServer>>,
 }
 
 impl Default for AppState {
     fn default() -> Self {
         Self {
             active_download: Mutex::new(None),
+            file_server: Mutex::new(None),
         }
     }
 }
@@ -362,6 +367,38 @@ pub async fn cut_local_video(
     }
 
     Ok(())
+}
+
+/// Serve a local video file over HTTP for preview playback
+#[tauri::command]
+pub async fn serve_local_file(
+    path: String,
+    state: State<'_, Arc<AppState>>,
+) -> Result<String> {
+    // Stop previous server
+    {
+        let mut server = state.file_server.lock().await;
+        if let Some(s) = server.take() {
+            s.stop();
+        }
+    }
+
+    let file_path = PathBuf::from(&path);
+    if !file_path.exists() {
+        return Err(AppError::CutError("File not found".to_string()));
+    }
+
+    let server = FileServer::start(file_path)
+        .await
+        .map_err(|e| AppError::CutError(format!("Failed to start file server: {}", e)))?;
+    let url = server.url();
+
+    {
+        let mut s = state.file_server.lock().await;
+        *s = Some(server);
+    }
+
+    Ok(url)
 }
 
 #[cfg(test)]

@@ -7,6 +7,7 @@ pub mod commands;
 pub mod deps;
 pub mod error;
 pub mod ffmpeg;
+pub mod fileserver;
 pub mod types;
 pub mod ytdlp;
 
@@ -36,6 +37,7 @@ pub fn run() {
             commands::show_in_folder,
             commands::get_video_duration,
             commands::cut_local_video,
+            commands::serve_local_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
