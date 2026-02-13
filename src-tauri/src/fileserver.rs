@@ -28,7 +28,7 @@ impl FileServer {
     }
 
     pub fn url(&self) -> String {
-        format!("http://127.0.0.1:{}/video", self.port)
+        format!("http://127.0.0.1:{}/dlcut-video", self.port)
     }
 
     pub fn stop(&self) {
@@ -74,10 +74,7 @@ impl FileServer {
         };
         let file_size = metadata.len();
 
-        let ext = file_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+        let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
         let content_type = match ext.to_lowercase().as_str() {
             "mp4" | "m4v" => "video/mp4",
             "mkv" => "video/x-matroska",

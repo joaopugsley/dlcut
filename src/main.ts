@@ -1158,7 +1158,7 @@ async function initCutTab() {
 
     if (event.payload.type === "over") {
       cutFileArea.classList.add("drag-over");
-    } else if (event.payload.type === "leave" || event.payload.type === "cancel") {
+    } else if (event.payload.type === "leave") {
       cutFileArea.classList.remove("drag-over");
     } else if (event.payload.type === "drop") {
       cutFileArea.classList.remove("drag-over");

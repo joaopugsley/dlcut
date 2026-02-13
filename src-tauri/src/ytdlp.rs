@@ -404,18 +404,27 @@ pub async fn download_video(
         .map_err(|e| AppError::DownloadError(format!("Failed to start yt-dlp: {}", e)))?;
 
     let stdout = child.stdout.take().unwrap();
-    let mut reader = BufReader::new(stdout).lines();
+    let mut reader = BufReader::new(stdout);
 
     // Parse progress from yt-dlp output
     let progress_regex =
         Regex::new(r"\[download\]\s+(\d+\.?\d*)%.*?(\d+\.?\d*\w+/s)?.*?ETA\s+(\S+)?").unwrap();
 
-    while let Some(line) = reader
-        .next_line()
-        .await
-        .map_err(|e| AppError::DownloadError(format!("Failed to read output: {}", e)))?
-    {
-        if let Some(caps) = progress_regex.captures(&line) {
+    // Read raw bytes to handle non-UTF-8 output (e.g. video titles with special characters)
+    let mut raw_line = Vec::new();
+    loop {
+        raw_line.clear();
+        let bytes_read = reader
+            .read_until(b'\n', &mut raw_line)
+            .await
+            .map_err(|e| AppError::DownloadError(format!("Failed to read output: {}", e)))?;
+        if bytes_read == 0 {
+            break;
+        }
+        let line = String::from_utf8_lossy(&raw_line);
+        let line = line.trim_end_matches('\n').trim_end_matches('\r');
+
+        if let Some(caps) = progress_regex.captures(line) {
             let percent: f64 = caps
                 .get(1)
                 .and_then(|m| m.as_str().parse().ok())
