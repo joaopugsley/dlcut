@@ -304,6 +304,46 @@ async function checkForUpdates(currentVersion: string) {
 
 // Initialize
 async function init() {
+  urlInput.addEventListener("input", handleUrlInput);
+  urlInput.addEventListener("paste", handleUrlPaste);
+  modeVideoBtn.addEventListener("click", () => handleModeChange("video_with_audio"));
+  modeAudioBtn.addEventListener("click", () => handleModeChange("audio_only"));
+  qualitySelect.addEventListener("change", handleQualityChange);
+  downloadBtn.addEventListener("click", handleDownload);
+  cancelBtn.addEventListener("click", handleCancel);
+  openFolderBtn.addEventListener("click", handleOpenFolder);
+
+  // Range slider events
+  handleStart.addEventListener("mousedown", (e) => startDrag(e, "start"));
+  handleEnd.addEventListener("mousedown", (e) => startDrag(e, "end"));
+  handleStart.addEventListener("touchstart", (e) => startDrag(e, "start"), { passive: false });
+  handleEnd.addEventListener("touchstart", (e) => startDrag(e, "end"), { passive: false });
+  document.addEventListener("mousemove", onDrag);
+  document.addEventListener("mouseup", stopDrag);
+  document.addEventListener("touchmove", onDrag, { passive: false });
+  document.addEventListener("touchend", stopDrag);
+
+  // Resize when collapsible is toggled
+  const cutCollapsible = cutSection.querySelector("details");
+  if (cutCollapsible) {
+    cutCollapsible.addEventListener("toggle", () => resizeWindowToContent());
+  }
+
+  // Listen for progress events from backend
+  await listen<ProgressUpdate>("progress", (event: { payload: ProgressUpdate; }) => {
+    updateProgress(event.payload);
+  });
+
+  await listen<string>("download-complete", (event: { payload: string; }) => {
+    handleDownloadComplete(event.payload);
+  });
+
+  await listen<string>("download-error", (event: { payload: string; }) => {
+    handleDownloadFailure(event.payload);
+  });
+
+  urlInput.focus();
+
   // Set up window controls (minimize, close)
   await setupWindowControls();
 
@@ -312,6 +352,19 @@ async function init() {
   const version = await getVersion();
   document.getElementById("app-version")!.textContent = `v${version}`;
   checkForUpdates(version);
+
+  // Credits links - open in browser
+  const { open } = await import("@tauri-apps/plugin-shell");
+
+  document.getElementById("credits-twitter")!.addEventListener("click", async (e) => {
+    e.preventDefault();
+    await open("https://twitter.com/i/user/996532148436918272");
+  });
+
+  document.getElementById("credits-github")!.addEventListener("click", async (e) => {
+    e.preventDefault();
+    await open("https://github.com/joaopugsley/dlcut");
+  });
 
   // Check if dependencies are installed
   const depsStatus = await invoke<DepsStatus>("check_dependencies");
@@ -353,63 +406,8 @@ async function init() {
   appFooter.classList.remove("hidden");
   resizeWindowToContent();
 
-  // Set up event listeners
-  urlInput.addEventListener("input", handleUrlInput);
-  urlInput.addEventListener("paste", handleUrlPaste);
-  modeVideoBtn.addEventListener("click", () => handleModeChange("video_with_audio"));
-  modeAudioBtn.addEventListener("click", () => handleModeChange("audio_only"));
-  qualitySelect.addEventListener("change", handleQualityChange);
-  downloadBtn.addEventListener("click", handleDownload);
-  cancelBtn.addEventListener("click", handleCancel);
-  openFolderBtn.addEventListener("click", handleOpenFolder);
-
-  // Range slider events
-  handleStart.addEventListener("mousedown", (e) => startDrag(e, "start"));
-  handleEnd.addEventListener("mousedown", (e) => startDrag(e, "end"));
-  handleStart.addEventListener("touchstart", (e) => startDrag(e, "start"), { passive: false });
-  handleEnd.addEventListener("touchstart", (e) => startDrag(e, "end"), { passive: false });
-  document.addEventListener("mousemove", onDrag);
-  document.addEventListener("mouseup", stopDrag);
-  document.addEventListener("touchmove", onDrag, { passive: false });
-  document.addEventListener("touchend", stopDrag);
-
-  // Resize when collapsible is toggled
-  const cutCollapsible = cutSection.querySelector("details");
-  if (cutCollapsible) {
-    cutCollapsible.addEventListener("toggle", () => resizeWindowToContent());
-  }
-
-  // Credits links - open in browser
-  const { open } = await import("@tauri-apps/plugin-shell");
-
-  document.getElementById("credits-twitter")!.addEventListener("click", async (e) => {
-    e.preventDefault();
-    await open("https://twitter.com/i/user/996532148436918272");
-  });
-
-  document.getElementById("credits-github")!.addEventListener("click", async (e) => {
-    e.preventDefault();
-    await open("https://github.com/joaopugsley/dlcut");
-  });
-
-  // Listen for progress events from backend
-  await listen<ProgressUpdate>("progress", (event: { payload: ProgressUpdate; }) => {
-    updateProgress(event.payload);
-  });
-
-  await listen<string>("download-complete", (event: { payload: string; }) => {
-    handleDownloadComplete(event.payload);
-  });
-
-  await listen<string>("download-error", (event: { payload: string; }) => {
-    handleDownloadFailure(event.payload);
-  });
-
   // Initialize cut tab
   await initCutTab();
-
-  // Focus URL input on load
-  urlInput.focus();
 }
 
 // URL input handler with debounce
