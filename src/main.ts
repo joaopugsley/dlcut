@@ -157,6 +157,72 @@ interface SetupProgress {
   progress: number;
 }
 
+const YTDLP_NEEDS_ELEVATION_ERROR =
+  "yt-dlp needs to update, but administrator permission wasn't granted.";
+
+type YtdlpUpdateStatus = "updated" | "up_to_date" | "needs_elevation";
+
+let ytdlpBackgroundCheck: Promise<YtdlpUpdateStatus> | null = null;
+let ytdlpBackgroundCheckDone = false;
+let ytdlpBackgroundCheckStatus: YtdlpUpdateStatus | null = null;
+
+function startBackgroundYtdlpCheck() {
+  ytdlpBackgroundCheck = invoke<YtdlpUpdateStatus>("check_ytdlp_update")
+    .catch(() => "up_to_date" as YtdlpUpdateStatus)
+    .then((status: YtdlpUpdateStatus) => {
+      ytdlpBackgroundCheckStatus = status;
+      return status;
+    })
+    .finally(() => {
+      ytdlpBackgroundCheckDone = true;
+    });
+}
+
+async function waitForBackgroundYtdlpCheck(setMessage: (message: string) => void, reveal: () => void, conceal: () => void) {
+  if (!ytdlpBackgroundCheck || ytdlpBackgroundCheckDone) return;
+
+  setMessage("Checking for yt-dlp updates...");
+  reveal();
+  await ytdlpBackgroundCheck;
+  conceal();
+}
+
+async function updateYtdlpForRetry(onProgress: (message: string) => void): Promise<YtdlpUpdateStatus> {
+  const unlisten = await listen<SetupProgress>("ytdlp-update-progress", (event: { payload: SetupProgress }) => {
+    onProgress(event.payload.message);
+  });
+
+  try {
+    const status = ytdlpBackgroundCheckStatus === "needs_elevation"
+      ? await invoke<YtdlpUpdateStatus>("retry_ytdlp_update")
+      : await invoke<YtdlpUpdateStatus>("update_ytdlp", { allowElevation: true });
+    ytdlpBackgroundCheckStatus = status;
+    return status;
+  } catch {
+    ytdlpBackgroundCheckStatus = "needs_elevation";
+    return "needs_elevation";
+  } finally {
+    unlisten();
+  }
+}
+
+async function retryElevatedYtdlpUpdate(onProgress: (message: string) => void): Promise<YtdlpUpdateStatus> {
+  const unlisten = await listen<SetupProgress>("ytdlp-update-progress", (event: { payload: SetupProgress }) => {
+    onProgress(event.payload.message);
+  });
+
+  try {
+    const status = await invoke<YtdlpUpdateStatus>("retry_ytdlp_update");
+    ytdlpBackgroundCheckStatus = status;
+    return status;
+  } catch {
+    ytdlpBackgroundCheckStatus = "needs_elevation";
+    return "needs_elevation";
+  } finally {
+    unlisten();
+  }
+}
+
 // DOM Elements
 const setupSection = document.getElementById("setup-section") as HTMLElement;
 const setupMessage = document.getElementById("setup-message") as HTMLParagraphElement;
@@ -164,6 +230,7 @@ const setupProgressFill = document.getElementById("setup-progress-fill") as HTML
 const urlSection = document.getElementById("url-section") as HTMLElement;
 const urlInput = document.getElementById("url-input") as HTMLInputElement;
 const urlError = document.getElementById("url-error") as HTMLParagraphElement;
+const fetchStatus = document.getElementById("fetch-status") as HTMLParagraphElement;
 const videoInfoSkeleton = document.getElementById("video-info-skeleton") as HTMLElement;
 const videoInfoSection = document.getElementById("video-info") as HTMLElement;
 const thumbnail = document.getElementById("thumbnail") as HTMLImageElement;
@@ -272,17 +339,19 @@ async function init() {
 
       // Wait a moment then show main UI
       await new Promise((resolve) => setTimeout(resolve, 500));
-
-      setupSection.classList.add("hidden");
-      urlSection.classList.remove("hidden");
-      appFooter.classList.remove("hidden");
-      resizeWindowToContent();
     } catch (error) {
       setupMessage.textContent = `Setup failed: ${error}`;
       setupProgressFill.style.width = "0%";
       return;
     }
+  } else {
+    startBackgroundYtdlpCheck();
   }
+
+  setupSection.classList.add("hidden");
+  urlSection.classList.remove("hidden");
+  appFooter.classList.remove("hidden");
+  resizeWindowToContent();
 
   // Set up event listeners
   urlInput.addEventListener("input", handleUrlInput);
@@ -333,7 +402,7 @@ async function init() {
   });
 
   await listen<string>("download-error", (event: { payload: string; }) => {
-    handleDownloadError(event.payload);
+    handleDownloadFailure(event.payload);
   });
 
   // Initialize cut tab
@@ -414,16 +483,86 @@ async function fetchVideoInfo(url: string) {
   urlInput.classList.add("loading");
   show(videoInfoSkeleton);
 
+  await waitForBackgroundYtdlpCheck(
+    (message) => { fetchStatus.textContent = message; },
+    () => show(fetchStatus),
+    () => hide(fetchStatus)
+  );
+
+  if (ytdlpBackgroundCheckStatus === "needs_elevation") {
+    fetchStatus.textContent = "Requesting administrator permission to update yt-dlp...";
+    show(fetchStatus);
+
+    const status = await updateYtdlpForRetry((message) => {
+      fetchStatus.textContent = message;
+      show(fetchStatus);
+    });
+    hide(fetchStatus);
+
+    if (status === "needs_elevation") {
+      hide(videoInfoSkeleton);
+      urlInput.classList.remove("loading");
+      showError(urlError, YTDLP_NEEDS_ELEVATION_ERROR, () => retryFetchAfterElevation(url));
+      return;
+    }
+  }
+
   try {
-    currentVideoInfo = await invoke<VideoInfo>("fetch_video_info", { url });
+    currentVideoInfo = await fetchVideoInfoResilient(url);
     hide(videoInfoSkeleton);
     displayVideoInfo(currentVideoInfo!);
   } catch (error) {
     hide(videoInfoSkeleton);
-    showError(urlError, `${error}`);
+    const message = `${error}`;
+    if (message === YTDLP_NEEDS_ELEVATION_ERROR) {
+      showError(urlError, message, () => retryFetchAfterElevation(url));
+    } else {
+      showError(urlError, message);
+    }
   } finally {
     urlInput.classList.remove("loading");
   }
+}
+
+async function fetchVideoInfoResilient(url: string): Promise<VideoInfo> {
+  try {
+    return await invoke<VideoInfo>("fetch_video_info", { url });
+  } catch (firstError) {
+    const status = await updateYtdlpForRetry((message) => {
+      fetchStatus.textContent = message;
+      show(fetchStatus);
+    });
+    hide(fetchStatus);
+
+    if (status === "needs_elevation") {
+      throw YTDLP_NEEDS_ELEVATION_ERROR;
+    }
+
+    try {
+      return await invoke<VideoInfo>("fetch_video_info", { url });
+    } catch {
+      throw firstError;
+    }
+  }
+}
+
+async function retryFetchAfterElevation(url: string) {
+  hideError(urlError);
+  fetchStatus.textContent = "Requesting administrator permission to update yt-dlp...";
+  show(fetchStatus);
+
+  const status = await retryElevatedYtdlpUpdate((message) => {
+    fetchStatus.textContent = message;
+  });
+
+  hide(fetchStatus);
+
+  if (status === "needs_elevation") {
+    showError(urlError, YTDLP_NEEDS_ELEVATION_ERROR, () => retryFetchAfterElevation(url));
+    return;
+  }
+
+  await fetchVideoInfo(url);
 }
 
 // Display video information
@@ -683,23 +822,53 @@ async function handleDownload() {
   const startTime = startTimeInput.value ? parseFloat(startTimeInput.value) : null;
   const endTime = endTimeInput.value ? parseFloat(endTimeInput.value) : null;
 
-  // Start download
+  await startDownload({
+    url: urlInput.value.trim(),
+    quality: quality,
+    mode: currentMode,
+    output_path: outputPath,
+    start_time: startTime,
+    end_time: endTime,
+  });
+}
+
+let lastDownloadRequest: Record<string, unknown> | null = null;
+let downloadAutoRetryDone = false;
+
+async function startDownload(request: Record<string, unknown>) {
+  lastDownloadRequest = request;
+  downloadAutoRetryDone = false;
+  await runDownload(request);
+}
+
+async function runDownload(request: Record<string, unknown>) {
   isDownloading = true;
   hide(downloadSection);
   hide(statusSection);
   show(progressSection);
 
-  try {
-    await invoke("start_download", {
-      request: {
-        url: urlInput.value.trim(),
-        quality: quality,
-        mode: currentMode,
-        output_path: outputPath,
-        start_time: startTime,
-        end_time: endTime,
-      },
+  await waitForBackgroundYtdlpCheck(
+    (message) => { progressMessage.textContent = message; },
+    () => { progressFill.style.width = "0%"; },
+    () => {}
+  );
+
+  if (ytdlpBackgroundCheckStatus === "needs_elevation") {
+    progressMessage.textContent = "Requesting administrator permission to update yt-dlp...";
+    progressFill.style.width = "0%";
+
+    const status = await updateYtdlpForRetry((message) => {
+      progressMessage.textContent = message;
     });
+
+    if (status === "needs_elevation") {
+      handleDownloadError(YTDLP_NEEDS_ELEVATION_ERROR);
+      return;
+    }
+  }
+
+  try {
+    await invoke("start_download", { request });
   } catch (error) {
     handleDownloadError(`${error}`);
   }
@@ -745,12 +914,61 @@ async function handleOpenFolder() {
   }
 }
 
+async function handleDownloadFailure(error: string) {
+  if (downloadAutoRetryDone || !lastDownloadRequest) {
+    handleDownloadError(error);
+    return;
+  }
+  downloadAutoRetryDone = true;
+
+  const request = lastDownloadRequest;
+  progressFill.style.width = "0%";
+
+  const status = await updateYtdlpForRetry((message) => {
+    progressMessage.textContent = message;
+  });
+
+  if (status === "needs_elevation") {
+    handleDownloadError(YTDLP_NEEDS_ELEVATION_ERROR);
+    return;
+  }
+
+  await runDownload(request);
+}
+
 // Handle download error
 function handleDownloadError(error: string) {
   isDownloading = false;
   hide(progressSection);
   show(downloadSection);
-  showStatus(error, "error");
+
+  if (error === YTDLP_NEEDS_ELEVATION_ERROR && lastDownloadRequest) {
+    const request = lastDownloadRequest;
+    showStatus(error, "error", () => retryDownloadAfterElevation(request));
+  } else {
+    showStatus(error, "error");
+  }
+}
+
+async function retryDownloadAfterElevation(request: Record<string, unknown>) {
+  hide(downloadSection);
+  hide(statusSection);
+  show(progressSection);
+  progressMessage.textContent = "Requesting administrator permission to update yt-dlp...";
+  progressFill.style.width = "0%";
+
+  const status = await retryElevatedYtdlpUpdate((message) => {
+    progressMessage.textContent = message;
+  });
+
+  if (status === "needs_elevation") {
+    hide(progressSection);
+    show(downloadSection);
+    showStatus(YTDLP_NEEDS_ELEVATION_ERROR, "error", () => retryDownloadAfterElevation(request));
+    return;
+  }
+
+  await startDownload(request);
 }
 
 // Handle cancel button
@@ -809,8 +1027,27 @@ function hide(element: HTMLElement) {
   resizeWindowToContent();
 }
 
-function showError(element: HTMLElement, message: string) {
-  element.textContent = message;
+function renderRetryableMessage(container: HTMLElement, message: string, onRetry: () => void) {
+  container.textContent = "";
+  container.appendChild(document.createTextNode(`${message} `));
+
+  const link = document.createElement("a");
+  link.href = "#";
+  link.className = "retry-link";
+  link.textContent = "Click here to retry";
+  link.addEventListener("click", (e) => {
+    e.preventDefault();
+    onRetry();
+  });
+  container.appendChild(link);
+}
+
+function showError(element: HTMLElement, message: string, onRetry?: () => void) {
+  if (onRetry) {
+    renderRetryableMessage(element, message, onRetry);
+  } else {
+    element.textContent = message;
+  }
   element.classList.remove("hidden");
 }
 
@@ -818,8 +1055,12 @@ function hideError(element: HTMLElement) {
   element.classList.add("hidden");
 }
 
-function showStatus(message: string, type: "success" | "error") {
-  statusText.textContent = message;
+function showStatus(message: string, type: "success" | "error", onRetry?: () => void) {
+  if (onRetry) {
+    renderRetryableMessage(statusText, message, onRetry);
+  } else {
+    statusText.textContent = message;
+  }
   statusMessage.className = `status ${type}`;
   if (type !== "success") {
     openFolderBtn.classList.add("hidden");

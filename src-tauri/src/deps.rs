@@ -142,6 +142,117 @@ pub async fn check_deps_status() -> DepsStatus {
     }
 }
 
+#[derive(serde::Serialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum YtdlpUpdateStatus {
+    Updated,
+    UpToDate,
+    NeedsElevation,
+}
+
+pub async fn update_ytdlp<F>(on_progress: F, allow_elevation: bool) -> Result<YtdlpUpdateStatus>
+where
+    F: Fn(&str, f64) + Send + Sync,
+{
+    on_progress("Checking for yt-dlp updates...", 0.0);
+
+    let cmd_path = get_ytdlp_command().await;
+    let (updated, needs_elevation) = run_ytdlp_update(&cmd_path).await?;
+
+    if updated {
+        on_progress("yt-dlp updated to the latest version", 100.0);
+        return Ok(YtdlpUpdateStatus::Updated);
+    }
+
+    if !needs_elevation {
+        on_progress("yt-dlp is up to date", 100.0);
+        return Ok(YtdlpUpdateStatus::UpToDate);
+    }
+
+    if !allow_elevation {
+        return Ok(YtdlpUpdateStatus::NeedsElevation);
+    }
+
+    request_elevated_update(&cmd_path, on_progress).await
+}
+
+pub async fn retry_ytdlp_update_elevated<F>(on_progress: F) -> Result<YtdlpUpdateStatus>
+where
+    F: Fn(&str, f64) + Send + Sync,
+{
+    let cmd_path = get_ytdlp_command().await;
+    request_elevated_update(&cmd_path, on_progress).await
+}
+
+#[cfg(windows)]
+async fn request_elevated_update<F>(cmd_path: &str, on_progress: F) -> Result<YtdlpUpdateStatus>
+where
+    F: Fn(&str, f64) + Send + Sync,
+{
+    on_progress("Requesting administrator permission to update yt-dlp...", 50.0);
+    let updated = run_ytdlp_update_elevated(cmd_path).await?;
+
+    if updated {
+        on_progress("yt-dlp updated to the latest version", 100.0);
+        Ok(YtdlpUpdateStatus::Updated)
+    } else {
+        Ok(YtdlpUpdateStatus::NeedsElevation)
+    }
+}
+
+#[cfg(not(windows))]
+async fn request_elevated_update<F>(_cmd_path: &str, on_progress: F) -> Result<YtdlpUpdateStatus>
+where
+    F: Fn(&str, f64) + Send + Sync,
+{
+    on_progress("yt-dlp is up to date", 100.0);
+    Ok(YtdlpUpdateStatus::UpToDate)
+}
+
+async fn run_ytdlp_update(cmd_path: &str) -> Result<(bool, bool)> {
+    let mut cmd = Command::new(cmd_path);
+    cmd.arg("--update");
+
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    let output = cmd
+        .output()
+        .await
+        .map_err(|e| AppError::DependencyError(format!("Failed to run yt-dlp update: {}", e)))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let updated = output.status.success() && stdout.contains("Updated yt-dlp");
+
+    let combined = format!("{stdout}{stderr}").to_lowercase();
+    let needs_elevation = !updated
+        && !output.status.success()
+        && (combined.contains("admin")
+            || combined.contains("permission denied")
+            || combined.contains("access is denied"));
+
+    Ok((updated, needs_elevation))
+}
+
+#[cfg(windows)]
+async fn run_ytdlp_update_elevated(cmd_path: &str) -> Result<bool> {
+    let ps_command = format!(
+        "try {{ $p = Start-Process -FilePath '{}' -ArgumentList '--update' -Verb RunAs -Wait -WindowStyle Hidden -PassThru -ErrorAction Stop; exit $p.ExitCode }} catch {{ exit 1 }}",
+        cmd_path.replace('\'', "''")
+    );
+
+    let mut cmd = Command::new("powershell");
+    cmd.args(["-NoProfile", "-NonInteractive", "-Command", &ps_command]);
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    let status = cmd.status().await.map_err(|e| {
+        AppError::DependencyError(format!("Failed to launch elevated yt-dlp update: {}", e))
+    })?;
+
+    Ok(status.success())
+}
+
 /// Progress callback type
 pub type ProgressCallback = Box<dyn Fn(&str, f64) + Send + Sync>;
 

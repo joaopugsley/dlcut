@@ -28,6 +28,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::check_dependencies,
             commands::install_dependencies,
+            commands::check_ytdlp_update,
+            commands::update_ytdlp,
+            commands::retry_ytdlp_update,
             commands::fetch_video_info,
             commands::validate_timestamps,
             commands::start_download,

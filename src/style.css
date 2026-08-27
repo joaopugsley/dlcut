@@ -532,6 +532,13 @@ body {
   margin-top: var(--space-sm);
 }
 
+.retry-link {
+  color: var(--color-primary);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: inherit;
+}
+
 /* Loading state for inputs */
 .input.loading {
   background-image: linear-gradient(90deg, transparent, rgba(0,0,0,0.05), transparent);

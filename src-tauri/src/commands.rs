@@ -3,7 +3,7 @@
 //! These are the IPC endpoints exposed to the frontend.
 //! All inputs are validated before processing.
 
-use crate::deps::{self, DepsStatus};
+use crate::deps::{self, DepsStatus, YtdlpUpdateStatus};
 use crate::error::{AppError, Result};
 use crate::ffmpeg;
 use crate::fileserver::FileServer;
@@ -48,6 +48,45 @@ pub async fn install_dependencies(app: AppHandle) -> Result<()> {
     }).await?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn check_ytdlp_update(app: AppHandle) -> Result<YtdlpUpdateStatus> {
+    deps::update_ytdlp(
+        |message, progress| {
+            let _ = app.emit("ytdlp-update-progress", serde_json::json!({
+                "message": message,
+                "progress": progress
+            }));
+        },
+        false,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn update_ytdlp(app: AppHandle, allow_elevation: bool) -> Result<YtdlpUpdateStatus> {
+    deps::update_ytdlp(
+        |message, progress| {
+            let _ = app.emit("ytdlp-update-progress", serde_json::json!({
+                "message": message,
+                "progress": progress
+            }));
+        },
+        allow_elevation,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn retry_ytdlp_update(app: AppHandle) -> Result<YtdlpUpdateStatus> {
+    deps::retry_ytdlp_update_elevated(|message, progress| {
+        let _ = app.emit("ytdlp-update-progress", serde_json::json!({
+            "message": message,
+            "progress": progress
+        }));
+    })
+    .await
 }
 
 /// Fetch video information from a supported URL
